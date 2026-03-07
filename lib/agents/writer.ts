@@ -25,6 +25,21 @@ export async function writeLetterNode(
   }
 
   const tone = state.user_profile.preferred_tone || 'balanced'
+  const cultureKeywords = Array.isArray(state.company_research.culture_keywords)
+    ? state.company_research.culture_keywords
+    : []
+  const recentNews = Array.isArray(state.company_research.recent_news)
+    ? state.company_research.recent_news
+    : []
+  const growthAreas = Array.isArray(state.company_research.growth_areas)
+    ? state.company_research.growth_areas
+    : []
+  const topMatches = Array.isArray(state.skill_matches.top_matches)
+    ? state.skill_matches.top_matches
+    : []
+  const bridgeStories = Array.isArray(state.skill_matches.bridge_stories)
+    ? state.skill_matches.bridge_stories
+    : []
 
   try {
     const response = await getLLM().invoke([
@@ -59,23 +74,23 @@ ${state.user_profile.things_to_downplay ? `Downplay: ${state.user_profile.things
 COMPANY: ${state.company_research.company_name}
 Industry: ${state.company_research.industry}
 Mission: ${state.company_research.mission_and_values}
-Culture keywords: ${state.company_research.culture_keywords.join(', ')}
+Culture keywords: ${cultureKeywords.join(', ')}
 What they look for: ${state.company_research.what_they_look_for}
-Recent context: ${state.company_research.recent_news.slice(0, 2).join('; ')}
-Growth areas: ${state.company_research.growth_areas.join(', ')}
+Recent context: ${recentNews.slice(0, 2).join('; ')}
+Growth areas: ${growthAreas.join(', ')}
 
 NARRATIVE STRATEGY:
 Arc: ${state.skill_matches.recommended_narrative_arc}
 Key value prop: ${state.skill_matches.key_value_proposition}
 Top skill matches to weave in:
-${state.skill_matches.top_matches
+${topMatches
   .filter(m => m.relevance === 'high')
   .slice(0, 3)
   .map(m => `- ${m.user_skill_or_experience} → ${m.company_need_it_addresses}: ${m.suggested_framing}`)
   .join('\n')}
 
 Bridge story to use:
-${state.skill_matches.bridge_stories.slice(0, 1).map(b => `${b.experience}: ${b.narrative_angle}`).join('\n')}
+${bridgeStories.slice(0, 1).map(b => `${b.experience}: ${b.narrative_angle}`).join('\n')}
 
 Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably written for ${state.company_research.company_name}.`),
     ], {

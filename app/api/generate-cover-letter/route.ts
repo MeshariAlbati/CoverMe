@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
 import type { Profile } from '@/types'
 
-// Simple in-memory rate limiting (per user, 5 per hour)
+// Simple in-memory rate limiting (per user, 10 per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 function checkRateLimit(userId: string): boolean {
@@ -47,9 +47,12 @@ export async function POST(req: NextRequest) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const { company_name, regenerate_id } = await req.json()
+  const body = await req.json()
+  const companyName = typeof body?.company_name === 'string' ? body.company_name : ''
+  const regenerate_id = typeof body?.regenerate_id === 'string' ? body.regenerate_id : undefined
+  const normalizedCompanyName = companyName.trim()
 
-  if (!company_name?.trim()) {
+  if (!normalizedCompanyName) {
     return new Response('Company name is required', { status: 400 })
   }
 
@@ -58,6 +61,28 @@ export async function POST(req: NextRequest) {
   }
 
   return createSSEStream(async (controller) => {
+    const adminClient = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    let draftRecordId: string | null = null
+
+    const cleanupDraft = async () => {
+      if (!draftRecordId) return
+
+      const recordId = draftRecordId
+      draftRecordId = null
+      const { error: cleanupError } = await adminClient
+        .from('cover_letters')
+        .delete()
+        .eq('id', recordId)
+        .eq('user_id', user.id)
+
+      if (cleanupError) {
+        console.error('Failed to cleanup draft cover letter:', cleanupError)
+      }
+    }
+
     try {
       // Fetch user profile
       const { data: profile, error: profileError } = await supabase
@@ -76,10 +101,10 @@ export async function POST(req: NextRequest) {
       let cachedResearch = null
       if (!regenerate_id) {
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-        const { data: cached } = await supabase
+        const { data: cached } = await adminClient
           .from('cover_letters')
           .select('company_research')
-          .ilike('company_name', company_name.trim())
+          .ilike('company_name', normalizedCompanyName)
           .not('company_research', 'is', null)
           .gte('created_at', sevenDaysAgo)
           .limit(1)
@@ -90,19 +115,26 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Create initial cover letter record
-      const adminClient = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
+      let version = 1
+      if (regenerate_id) {
+        const { data: previousVersionRow } = await supabase
+          .from('cover_letters')
+          .select('version')
+          .eq('id', regenerate_id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (previousVersionRow?.version) {
+          version = previousVersionRow.version + 1
+        }
+      }
 
       const { data: newRecord, error: insertError } = await adminClient
         .from('cover_letters')
         .insert({
           user_id: user.id,
-          company_name: company_name.trim(),
+          company_name: normalizedCompanyName,
           cover_letter_text: '',
-          version: 1,
+          version,
         })
         .select()
         .single()
@@ -113,14 +145,15 @@ export async function POST(req: NextRequest) {
         return
       }
 
+      draftRecordId = newRecord.id
       sendEvent(controller, 'cover_letter_id', { id: newRecord.id })
 
       // Step 1: Research (or use cache)
-      sendEvent(controller, 'progress', { step: 'researching', message: `Researching ${company_name}...` })
+      sendEvent(controller, 'progress', { step: 'researching', message: `Researching ${normalizedCompanyName}...` })
 
       const initialState = {
         user_profile: profile as Profile,
-        company_name: company_name.trim(),
+        company_name: normalizedCompanyName,
         company_research: cachedResearch,
         skill_matches: null,
         cover_letter: '',
@@ -136,7 +169,7 @@ export async function POST(req: NextRequest) {
         streamMode: 'updates',
         configurable: {
           run_name: 'cover-letter-generation',
-          metadata: { user_id: user.id, company: company_name },
+          metadata: { user_id: user.id, company: normalizedCompanyName },
         },
       })
 
@@ -149,6 +182,7 @@ export async function POST(req: NextRequest) {
           const nodeUpdate = typedUpdate[nodeName]
 
           if (nodeUpdate.error) {
+            await cleanupDraft()
             sendEvent(controller, 'error', { message: nodeUpdate.error })
             controller.close()
             return
@@ -171,13 +205,14 @@ export async function POST(req: NextRequest) {
       const skillMatches = finalState.skill_matches
 
       if (!finalCoverLetter) {
+        await cleanupDraft()
         sendEvent(controller, 'error', { message: 'Failed to generate cover letter' })
         controller.close()
         return
       }
 
       // Save final result
-      await adminClient
+      const { error: saveError } = await adminClient
         .from('cover_letters')
         .update({
           cover_letter_text: finalCoverLetter,
@@ -186,6 +221,14 @@ export async function POST(req: NextRequest) {
         })
         .eq('id', newRecord.id)
 
+      if (saveError) {
+        await cleanupDraft()
+        sendEvent(controller, 'error', { message: 'Failed to save generated cover letter' })
+        controller.close()
+        return
+      }
+
+      draftRecordId = null
       sendEvent(controller, 'done', {
         id: newRecord.id,
         cover_letter: finalCoverLetter,
@@ -196,6 +239,7 @@ export async function POST(req: NextRequest) {
       controller.close()
     } catch (error) {
       console.error('Generation error:', error)
+      await cleanupDraft()
       sendEvent(controller, 'error', {
         message: error instanceof Error ? error.message : 'Generation failed',
       })

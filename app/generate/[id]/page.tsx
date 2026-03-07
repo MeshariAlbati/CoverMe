@@ -22,5 +22,5 @@ export default async function GeneratePage({ params }: Props) {
 
   if (!coverLetter) redirect('/dashboard')
 
-  return <GenerationView coverLetter={coverLetter} userId={user.id} />
+  return <GenerationView coverLetter={coverLetter} />
 }

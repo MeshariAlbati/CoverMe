@@ -5,15 +5,21 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Copy, Download, RefreshCw, ThumbsUp, ThumbsDown,
-  Building2, Target, CheckCircle2, Loader2, Edit3, Save, X,
+  Building2, Target, Loader2, Edit3, Save, X,
   ChevronDown, ChevronUp
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
 import type { CoverLetter, CompanyResearch, SkillMatches } from '@/types'
+import { consumeSSE } from '@/lib/sse-client'
 
 interface Props {
   coverLetter: CoverLetter
-  userId: string
+}
+
+function readStringField(data: unknown, key: string): string | null {
+  if (!data || typeof data !== 'object') return null
+  const value = (data as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : null
 }
 
 function ActionButton({
@@ -68,7 +74,7 @@ function ActionButton({
   )
 }
 
-export default function GenerationView({ coverLetter, userId }: Props) {
+export default function GenerationView({ coverLetter }: Props) {
   const router = useRouter()
   const [letter, setLetter] = useState(coverLetter.cover_letter_text)
   const [editing, setEditing] = useState(false)
@@ -153,41 +159,45 @@ export default function GenerationView({ coverLetter, userId }: Props) {
       const response = await fetch('/api/generate-cover-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: coverLetter.company_name }),
+        body: JSON.stringify({
+          company_name: coverLetter.company_name,
+          regenerate_id: coverLetter.id,
+        }),
       })
 
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
       let newId: string | null = null
+      let navigated = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      await consumeSSE(response, (eventType, data) => {
+        if (eventType === 'cover_letter_id') {
+          const id = readStringField(data, 'id')
+          if (id) newId = id
+          return
+        }
 
-        const text = decoder.decode(value)
-        const lines = text.split('\n')
+        if (eventType === 'progress') {
+          const message = readStringField(data, 'message')
+          if (message) setRegenMessage(message)
+          return
+        }
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i]
-          if (line.startsWith('event: ')) {
-            const eventType = line.slice(7).trim()
-            const dataLine = lines[i + 1]
-            if (dataLine?.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(dataLine.slice(6))
-                if (eventType === 'cover_letter_id') newId = data.id
-                else if (eventType === 'progress') setRegenMessage(data.message)
-                else if (eventType === 'done') {
-                  router.push(`/generate/${data.id}`)
-                  return
-                } else if (eventType === 'error') throw new Error(data.message)
-              } catch { /* skip */ }
-            }
+        if (eventType === 'done') {
+          const id = readStringField(data, 'id')
+          if (id) {
+            newId = id
+            navigated = true
+            router.push(`/generate/${id}`)
           }
         }
+      })
+
+      if (!newId) {
+        throw new Error('Regeneration ended without a result')
       }
 
-      if (newId) router.push(`/generate/${newId}`)
+      if (!navigated) {
+        router.push(`/generate/${newId}`)
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Regeneration failed')
     } finally {

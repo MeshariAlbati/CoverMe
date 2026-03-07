@@ -9,10 +9,17 @@ import {
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
 import type { CoverLetter } from '@/types'
+import { consumeSSE } from '@/lib/sse-client'
 
 interface Props {
   profile: { full_name: string; job_title: string; cv_url: string | null } | null
   initialCoverLetters: CoverLetter[]
+}
+
+function readStringField(data: unknown, key: string): string | null {
+  if (!data || typeof data !== 'object') return null
+  const value = (data as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : null
 }
 
 type StepState = 'pending' | 'active' | 'done'
@@ -132,50 +139,37 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
         signal: abortRef.current.signal,
       })
 
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || 'Generation failed')
-      }
-
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
       let coverId: string | null = null
+      let navigated = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      await consumeSSE(response, (eventType, data) => {
+        if (eventType === 'cover_letter_id') {
+          const id = readStringField(data, 'id')
+          if (id) coverId = id
+          return
+        }
 
-        const text = decoder.decode(value)
-        const lines = text.split('\n')
+        if (eventType === 'progress') {
+          const message = readStringField(data, 'message')
+          if (message) setGeneratingMessage(message)
+          return
+        }
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i]
-          if (line.startsWith('event: ')) {
-            const eventType = line.slice(7).trim()
-            const dataLine = lines[i + 1]
-            if (dataLine?.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(dataLine.slice(6))
-                if (eventType === 'cover_letter_id') {
-                  coverId = data.id
-                } else if (eventType === 'progress') {
-                  setGeneratingMessage(data.message)
-                } else if (eventType === 'done') {
-                  coverId = data.id
-                  router.push(`/generate/${coverId}`)
-                  return
-                } else if (eventType === 'error') {
-                  throw new Error(data.message)
-                }
-              } catch {
-                // Skip malformed JSON lines
-              }
-            }
+        if (eventType === 'done') {
+          const id = readStringField(data, 'id')
+          if (id) {
+            coverId = id
+            navigated = true
+            router.push(`/generate/${id}`)
           }
         }
+      })
+
+      if (!coverId) {
+        throw new Error('Generation ended without a result')
       }
 
-      if (coverId) {
+      if (!navigated) {
         router.push(`/generate/${coverId}`)
       }
     } catch (err) {

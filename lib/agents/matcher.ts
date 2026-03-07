@@ -1,7 +1,29 @@
 import { ChatAnthropic } from '@langchain/anthropic'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
+import { z } from 'zod'
 import type { CoverLetterState } from './state'
 import type { SkillMatches } from '@/types'
+
+const skillMatchSchema = z.object({
+  user_skill_or_experience: z.string(),
+  company_need_it_addresses: z.string(),
+  relevance: z.enum(['high', 'medium', 'low']),
+  suggested_framing: z.string(),
+})
+
+const bridgeStorySchema = z.object({
+  experience: z.string(),
+  connection_to_company: z.string(),
+  narrative_angle: z.string(),
+})
+
+const skillMatchesSchema = z.object({
+  top_matches: z.array(skillMatchSchema),
+  bridge_stories: z.array(bridgeStorySchema),
+  gaps_to_address: z.array(z.string()),
+  recommended_narrative_arc: z.string(),
+  key_value_proposition: z.string(),
+})
 
 function getLLM() {
   return new ChatAnthropic({
@@ -50,7 +72,11 @@ export async function matchSkillsNode(
     })
 
     const text = (response.content as string).replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
-    const skill_matches: SkillMatches = JSON.parse(text)
+    const parsed = skillMatchesSchema.safeParse(JSON.parse(text))
+    if (!parsed.success) {
+      return { error: 'Skill matching output had an invalid format.' }
+    }
+    const skill_matches: SkillMatches = parsed.data
     return { skill_matches }
   } catch (error) {
     return { error: `Skill matching failed: ${error instanceof Error ? error.message : 'Unknown error'}` }

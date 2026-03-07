@@ -1,7 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Message } from '@anthropic-ai/sdk/resources/messages'
+import { z } from 'zod'
 import type { CoverLetterState } from './state'
 import type { CompanyResearch } from '@/types'
+
+const companyResearchSchema = z.object({
+  company_name: z.string(),
+  industry: z.string(),
+  mission_and_values: z.string(),
+  recent_news: z.array(z.string()),
+  products_and_services: z.string(),
+  tech_stack: z.array(z.string()),
+  culture_keywords: z.array(z.string()),
+  growth_areas: z.array(z.string()),
+  challenges: z.array(z.string()),
+  key_leadership: z.array(z.object({ name: z.string(), role: z.string() })),
+  what_they_look_for: z.string(),
+})
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
@@ -10,6 +25,14 @@ function getAnthropic() {
 export async function researchCompanyNode(
   state: CoverLetterState
 ): Promise<Partial<CoverLetterState>> {
+  if (state.error) {
+    return {}
+  }
+
+  if (state.company_research) {
+    return { company_research: state.company_research }
+  }
+
   try {
     const anthropic = getAnthropic()
     const response = await anthropic.messages.create({
@@ -98,7 +121,11 @@ Return this exact JSON structure:
     }
 
     const jsonText = researchText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
-    const company_research: CompanyResearch = JSON.parse(jsonText)
+    const parsed = companyResearchSchema.safeParse(JSON.parse(jsonText))
+    if (!parsed.success) {
+      return { error: 'Failed to parse company research output into the required format.' }
+    }
+    const company_research: CompanyResearch = parsed.data
 
     return { company_research }
   } catch (error) {
