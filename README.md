@@ -105,3 +105,46 @@ Agent 1 (CV Parser) runs separately at upload time.
 - **Edit mode** — manually edit generated letters
 - **Download** — export as .txt file
 - **Feedback** — thumbs up/down on each letter
+
+## Deploy To Railway
+
+This repo now includes `railway.json` for a standard Nixpacks deploy.
+
+### 1. Push this repo to GitHub
+
+Railway deploys from your GitHub repository.
+
+### 2. Create a Railway project
+
+1. In Railway, click **New Project**
+2. Choose **Deploy from GitHub repo**
+3. Select this repository
+
+Railway will detect Node.js and run:
+- `npm ci`
+- `npm run build`
+- `npm run start`
+
+### 3. Add environment variables in Railway
+
+Set these in Railway project variables:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ANTHROPIC_API_KEY`
+- `LLM_PROVIDER` (`claude` or `groq`)
+
+If you use Groq, also set:
+- `GROQ_API_KEY`
+
+Optional:
+- `LANGCHAIN_API_KEY`
+- `LANGCHAIN_PROJECT`
+- `LANGCHAIN_TRACING_V2`
+- `TAVILY_API_KEY`
+- any `ANTHROPIC_*_MODEL` / `GROQ_*_MODEL` overrides
+
+### 4. Redeploy
+
+Trigger a deploy after setting variables. Railway provides `PORT` automatically, and Next.js will bind to it in production.

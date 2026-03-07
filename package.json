@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "node node_modules/next/dist/bin/next dev",
-    "build": "node node_modules/next/dist/bin/next build",
+    "build": "node node_modules/next/dist/bin/next build --webpack",
     "start": "node node_modules/next/dist/bin/next start",
     "lint": "node node_modules/eslint/bin/eslint.js app/api lib types proxy.ts next.config.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
