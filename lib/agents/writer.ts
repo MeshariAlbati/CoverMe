@@ -11,6 +11,7 @@ import {
   getGroqStageModels,
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
+import { logError, logWarn, serializeError } from '@/lib/server-logger'
 
 const TONE_INSTRUCTIONS = {
   formal: 'Use professional, polished language. Maintain a formal register throughout. Avoid contractions.',
@@ -138,7 +139,10 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
           { role: 'user', content: userPrompt },
         ],
         900,
-        { models: groqWriterModels }
+        {
+          models: groqWriterModels,
+          label: 'letter_writing',
+        }
       )
       cover_letter = response.text
     } else {
@@ -159,7 +163,10 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
             company: state.company_name,
           },
         })
-      }, { models: claudeWriterModels })
+      }, {
+        models: claudeWriterModels,
+        label: 'letter_writing',
+      })
 
       cover_letter = normalizeResponseText(response.content)
     }
@@ -167,11 +174,23 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
     return { cover_letter }
   } catch (error) {
     if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
+      logWarn('llm_letter_writing_rate_limited', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+        error: serializeError(error),
+      })
       return {
         error: 'Cover letter generation is temporarily rate-limited. Please retry in about 60 seconds.',
       }
     }
 
+    logError('llm_letter_writing_failed', {
+      user_id: state.user_profile.id,
+      company: state.company_name,
+      provider: state.llm_provider,
+      error: serializeError(error),
+    })
     return { error: `Failed to write letter: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }

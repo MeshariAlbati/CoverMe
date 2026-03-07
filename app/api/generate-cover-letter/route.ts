@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
 import type { Profile } from '@/types'
 import { resolveLlmProvider } from '@/lib/llm/provider'
+import { logError, logInfo, logWarn, serializeError } from '@/lib/server-logger'
 
 // Simple in-memory rate limiting (per user, 10 per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
@@ -41,10 +42,12 @@ function sendEvent(controller: ReadableStreamDefaultController, event: string, d
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = crypto.randomUUID()
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
+    logWarn('cover_letter_generation_unauthorized', { request_id: requestId })
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -55,12 +58,31 @@ export async function POST(req: NextRequest) {
   const normalizedCompanyName = companyName.trim()
 
   if (!normalizedCompanyName) {
+    logWarn('cover_letter_generation_missing_company', {
+      request_id: requestId,
+      user_id: user.id,
+      provider: llmProvider,
+    })
     return new Response('Company name is required', { status: 400 })
   }
 
   if (!checkRateLimit(user.id)) {
+    logWarn('cover_letter_generation_rate_limited', {
+      request_id: requestId,
+      user_id: user.id,
+      company: normalizedCompanyName,
+      provider: llmProvider,
+    })
     return new Response('Rate limit exceeded. Please wait before generating more letters.', { status: 429 })
   }
+
+  logInfo('cover_letter_generation_started', {
+    request_id: requestId,
+    user_id: user.id,
+    company: normalizedCompanyName,
+    provider: llmProvider,
+    regenerate_id: regenerate_id || null,
+  })
 
   return createSSEStream(async (controller) => {
     const adminClient = createAdminClient(
@@ -81,7 +103,12 @@ export async function POST(req: NextRequest) {
         .eq('user_id', user.id)
 
       if (cleanupError) {
-        console.error('Failed to cleanup draft cover letter:', cleanupError)
+        logError('cover_letter_generation_cleanup_failed', {
+          request_id: requestId,
+          user_id: user.id,
+          record_id: recordId,
+          error: cleanupError,
+        })
       }
     }
 
@@ -94,6 +121,11 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (profileError || !profile) {
+        logWarn('cover_letter_generation_profile_missing', {
+          request_id: requestId,
+          user_id: user.id,
+          error: profileError || null,
+        })
         sendEvent(controller, 'error', { message: 'Profile not found. Please complete your profile first.' })
         controller.close()
         return
@@ -142,6 +174,12 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (insertError || !newRecord) {
+        logError('cover_letter_generation_record_create_failed', {
+          request_id: requestId,
+          user_id: user.id,
+          company: normalizedCompanyName,
+          error: insertError || null,
+        })
         sendEvent(controller, 'error', { message: 'Failed to create record' })
         controller.close()
         return
@@ -185,6 +223,14 @@ export async function POST(req: NextRequest) {
           const nodeUpdate = typedUpdate[nodeName]
 
           if (nodeUpdate.error) {
+            logError('cover_letter_generation_node_failed', {
+              request_id: requestId,
+              user_id: user.id,
+              company: normalizedCompanyName,
+              provider: llmProvider,
+              node: nodeName,
+              node_error: nodeUpdate.error,
+            })
             await cleanupDraft()
             sendEvent(controller, 'error', { message: nodeUpdate.error })
             controller.close()
@@ -208,6 +254,12 @@ export async function POST(req: NextRequest) {
       const skillMatches = finalState.skill_matches
 
       if (!finalCoverLetter) {
+        logError('cover_letter_generation_empty_output', {
+          request_id: requestId,
+          user_id: user.id,
+          company: normalizedCompanyName,
+          provider: llmProvider,
+        })
         await cleanupDraft()
         sendEvent(controller, 'error', { message: 'Failed to generate cover letter' })
         controller.close()
@@ -225,6 +277,12 @@ export async function POST(req: NextRequest) {
         .eq('id', newRecord.id)
 
       if (saveError) {
+        logError('cover_letter_generation_save_failed', {
+          request_id: requestId,
+          user_id: user.id,
+          record_id: newRecord.id,
+          error: saveError,
+        })
         await cleanupDraft()
         sendEvent(controller, 'error', { message: 'Failed to save generated cover letter' })
         controller.close()
@@ -239,9 +297,22 @@ export async function POST(req: NextRequest) {
         skill_matches: skillMatches,
       })
 
+      logInfo('cover_letter_generation_completed', {
+        request_id: requestId,
+        user_id: user.id,
+        record_id: newRecord.id,
+        company: normalizedCompanyName,
+        provider: llmProvider,
+      })
       controller.close()
     } catch (error) {
-      console.error('Generation error:', error)
+      logError('cover_letter_generation_unhandled_error', {
+        request_id: requestId,
+        user_id: user.id,
+        company: normalizedCompanyName,
+        provider: llmProvider,
+        error: serializeError(error),
+      })
       await cleanupDraft()
       sendEvent(controller, 'error', {
         message: error instanceof Error ? error.message : 'Generation failed',

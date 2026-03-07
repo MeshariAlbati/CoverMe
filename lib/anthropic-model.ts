@@ -1,3 +1,5 @@
+import { logError, logWarn, serializeError } from '@/lib/server-logger'
+
 const DEFAULT_ANTHROPIC_MODELS = [
   'claude-sonnet-4-6',
   'claude-sonnet-4-5-20250929',
@@ -18,6 +20,7 @@ type AnthropicFallbackOptions = {
   models?: string[]
   maxRateLimitRetries?: number
   retryBaseMs?: number
+  label?: string
 }
 
 function parseModelList(value?: string): string[] {
@@ -98,6 +101,7 @@ export async function withAnthropicModelFallback<T>(
   runner: (model: string) => Promise<T>,
   options: AnthropicFallbackOptions = {}
 ): Promise<T> {
+  const label = options.label || 'anthropic_request'
   const models = getAnthropicModelCandidates(options.models || [])
   const maxRateLimitRetries = Number(process.env.ANTHROPIC_RATE_LIMIT_RETRIES || options.maxRateLimitRetries || 2)
   const retryBaseMs = Number(process.env.ANTHROPIC_RETRY_BASE_MS || options.retryBaseMs || 1500)
@@ -113,10 +117,22 @@ export async function withAnthropicModelFallback<T>(
         lastError = error
 
         if (isAnthropicModelNotFoundError(error)) {
+          logWarn('llm_anthropic_model_unavailable', {
+            label,
+            model,
+            error: serializeError(error),
+          })
           break
         }
 
         if (isAnthropicRateLimitError(error)) {
+          logWarn('llm_anthropic_rate_limited', {
+            label,
+            model,
+            attempt,
+            max_retries: maxRateLimitRetries,
+            error: serializeError(error),
+          })
           if (attempt < maxRateLimitRetries) {
             const delay = retryBaseMs * 2 ** attempt
             await sleep(delay)
@@ -127,11 +143,22 @@ export async function withAnthropicModelFallback<T>(
           break
         }
 
+        logError('llm_anthropic_unhandled_error', {
+          label,
+          model,
+          attempt,
+          error: serializeError(error),
+        })
         throw error
       }
     }
   }
 
+  logError('llm_anthropic_all_models_failed', {
+    label,
+    models_tried: models,
+    error: serializeError(lastError),
+  })
   throw (
     lastError ||
     new Error('No usable Anthropic model found. Set ANTHROPIC_MODEL in your environment.')

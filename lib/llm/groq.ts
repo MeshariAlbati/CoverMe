@@ -1,3 +1,5 @@
+import { logError, logWarn, serializeError } from '@/lib/server-logger'
+
 type GroqRole = 'system' | 'user' | 'assistant'
 
 export interface GroqMessage {
@@ -24,6 +26,7 @@ type GroqFallbackOptions = {
   models?: string[]
   maxRateLimitRetries?: number
   retryBaseMs?: number
+  label?: string
 }
 
 const DEFAULT_GROQ_MODELS = [
@@ -112,8 +115,10 @@ export async function chatWithGroq(
   maxTokens: number,
   options: GroqFallbackOptions = {}
 ): Promise<{ text: string, model: string }> {
+  const label = options.label || 'groq_chat'
   const apiKey = process.env.GROQ_API_KEY?.trim()
   if (!apiKey) {
+    logError('llm_groq_missing_api_key', { label })
     throw new Error('GROQ_API_KEY is not set')
   }
 
@@ -142,6 +147,12 @@ export async function chatWithGroq(
           }),
         })
       } catch (error) {
+        logError('llm_groq_network_error', {
+          label,
+          model,
+          attempt,
+          error: serializeError(error),
+        })
         throw new Error(`Failed to reach Groq API: ${error instanceof Error ? error.message : 'Unknown network error'}`)
       }
 
@@ -151,10 +162,24 @@ export async function chatWithGroq(
         lastError = apiError
 
         if (isGroqModelNotFoundError(apiError)) {
+          logWarn('llm_groq_model_unavailable', {
+            label,
+            model,
+            status: response.status,
+            error_message: payload.error?.message || null,
+          })
           break
         }
 
         if (isGroqRateLimitError(apiError)) {
+          logWarn('llm_groq_rate_limited', {
+            label,
+            model,
+            attempt,
+            max_retries: maxRateLimitRetries,
+            status: response.status,
+            error_message: payload.error?.message || null,
+          })
           if (attempt < maxRateLimitRetries) {
             const delay = retryBaseMs * 2 ** attempt
             await sleep(delay)
@@ -165,12 +190,23 @@ export async function chatWithGroq(
           break
         }
 
+        logError('llm_groq_unhandled_api_error', {
+          label,
+          model,
+          attempt,
+          status: response.status,
+          error_message: payload.error?.message || null,
+        })
         throw apiError
       }
 
       const json = await response.json() as GroqChatResponse
       const text = json.choices?.[0]?.message?.content
       if (typeof text !== 'string' || !text.trim()) {
+        logError('llm_groq_empty_text_response', {
+          label,
+          model,
+        })
         throw new Error(`Groq response did not include text output for model ${model}`)
       }
 
@@ -178,5 +214,10 @@ export async function chatWithGroq(
     }
   }
 
+  logError('llm_groq_all_models_failed', {
+    label,
+    models_tried: models,
+    error: serializeError(lastError),
+  })
   throw (lastError || new Error('No usable Groq model found. Set GROQ_MODEL to an accessible model.'))
 }

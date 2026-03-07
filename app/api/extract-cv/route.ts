@@ -16,6 +16,7 @@ import {
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
 import { parseJsonFromModelText } from '@/lib/llm/json'
+import { logError, logInfo, logWarn, serializeError } from '@/lib/server-logger'
 
 function getCvExtractionPrompt(rawText: string): string {
   return `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
@@ -49,6 +50,8 @@ ${rawText.slice(0, 8000)}`
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = crypto.randomUUID()
+
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
@@ -56,10 +59,19 @@ export async function POST(req: NextRequest) {
     const llmProvider = resolveLlmProvider(typeof providerInput === 'string' ? providerInput : undefined)
 
     if (!file) {
+      logWarn('cv_extract_missing_file', {
+        request_id: requestId,
+        provider: llmProvider,
+      })
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     if (file.type !== 'application/pdf') {
+      logWarn('cv_extract_invalid_file_type', {
+        request_id: requestId,
+        provider: llmProvider,
+        file_type: file.type,
+      })
       return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
     }
 
@@ -85,15 +97,35 @@ export async function POST(req: NextRequest) {
       const isPasswordError = message.includes('password')
 
       if (isPasswordError) {
+        logWarn('cv_extract_pdf_password_protected', {
+          request_id: requestId,
+          provider: llmProvider,
+        })
         return NextResponse.json({ error: 'Failed to parse PDF. Please ensure the file is not password protected.' }, { status: 400 })
       }
 
+      logWarn('cv_extract_pdf_parse_failed', {
+        request_id: requestId,
+        provider: llmProvider,
+        error: serializeError(error),
+      })
       return NextResponse.json({ error: 'Failed to parse PDF. Please try another PDF export or re-save the file and upload again.' }, { status: 400 })
     }
 
     if (!rawText.trim()) {
+      logWarn('cv_extract_empty_text', {
+        request_id: requestId,
+        provider: llmProvider,
+      })
       return NextResponse.json({ error: 'Could not extract text from PDF. The file may be scanned or image-based.' }, { status: 400 })
     }
+
+    logInfo('cv_extract_started', {
+      request_id: requestId,
+      provider: llmProvider,
+      file_size_bytes: file.size,
+      file_name: file.name || null,
+    })
 
     const prompt = getCvExtractionPrompt(rawText)
     let llmText = ''
@@ -112,17 +144,28 @@ export async function POST(req: NextRequest) {
             },
           ],
           1100,
-          { models: groqCvModels }
+          {
+            models: groqCvModels,
+            label: 'cv_extraction',
+          }
         )
         llmText = response.text
       } catch (error) {
         if (isGroqModelNotFoundError(error)) {
+          logWarn('cv_extract_groq_model_not_found', {
+            request_id: requestId,
+            error: serializeError(error),
+          })
           return NextResponse.json({
             error: 'The configured Groq model is unavailable. Set GROQ_CV_MODEL to an accessible model.',
           }, { status: 500 })
         }
 
         if (isGroqRateLimitError(error)) {
+          logWarn('cv_extract_groq_rate_limited', {
+            request_id: requestId,
+            error: serializeError(error),
+          })
           return NextResponse.json({
             error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
           }, { status: 429 })
@@ -146,15 +189,26 @@ export async function POST(req: NextRequest) {
               },
             ],
           })
-        , { models: cvModels })
+        , {
+          models: cvModels,
+          label: 'cv_extraction',
+        })
       } catch (error) {
         if (isAnthropicModelNotFoundError(error)) {
+          logWarn('cv_extract_anthropic_model_not_found', {
+            request_id: requestId,
+            error: serializeError(error),
+          })
           return NextResponse.json({
             error: 'The configured Anthropic model is unavailable. Set ANTHROPIC_MODEL to an accessible model (e.g., claude-sonnet-4-6).',
           }, { status: 500 })
         }
 
         if (isAnthropicRateLimitError(error)) {
+          logWarn('cv_extract_anthropic_rate_limited', {
+            request_id: requestId,
+            error: serializeError(error),
+          })
           return NextResponse.json({
             error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
           }, { status: 429 })
@@ -165,6 +219,10 @@ export async function POST(req: NextRequest) {
 
       const content = response.content[0]
       if (content.type !== 'text') {
+        logError('cv_extract_unexpected_anthropic_response', {
+          request_id: requestId,
+          provider: llmProvider,
+        })
         return NextResponse.json({ error: 'Unexpected response from AI' }, { status: 500 })
       }
       llmText = content.text
@@ -173,16 +231,29 @@ export async function POST(req: NextRequest) {
     let extracted
     try {
       extracted = parseJsonFromModelText(llmText)
-    } catch {
+    } catch (error) {
+      logError('cv_extract_invalid_json_from_llm', {
+        request_id: requestId,
+        provider: llmProvider,
+        error: serializeError(error),
+      })
       return NextResponse.json({ error: 'Failed to parse AI extraction response' }, { status: 500 })
     }
+
+    logInfo('cv_extract_completed', {
+      request_id: requestId,
+      provider: llmProvider,
+    })
 
     return NextResponse.json({
       extracted,
       raw_cv_text: rawText.slice(0, 50000),
     })
   } catch (error) {
-    console.error('CV extraction error:', error)
+    logError('cv_extract_unhandled_error', {
+      request_id: requestId,
+      error: serializeError(error),
+    })
     return NextResponse.json({ error: 'Internal server error during CV extraction' }, { status: 500 })
   }
 }

@@ -16,6 +16,27 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>
 
+type AuthEventPayload = {
+  event: 'login_success' | 'login_error'
+  email?: string
+  userId?: string
+  errorMessage?: string
+}
+
+async function trackAuthEvent(payload: AuthEventPayload) {
+  try {
+    await fetch('/api/auth-events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    // Best-effort logging only; do not block auth flow.
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -29,14 +50,24 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
     })
     if (error) {
+      void trackAuthEvent({
+        event: 'login_error',
+        email: data.email,
+        errorMessage: error.message,
+      })
       setError(error.message)
       setLoading(false)
     } else {
+      void trackAuthEvent({
+        event: 'login_success',
+        email: data.email,
+        userId: signInData.user?.id,
+      })
       router.push('/dashboard')
       router.refresh()
     }

@@ -14,6 +14,7 @@ import {
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
 import { parseJsonFromModelText } from '@/lib/llm/json'
+import { logError, logWarn, serializeError } from '@/lib/server-logger'
 
 const skillMatchSchema = z.object({
   user_skill_or_experience: z.string(),
@@ -125,7 +126,10 @@ export async function matchSkillsNode(
           { role: 'user', content: prompt },
         ],
         1200,
-        { models: groqMatcherModels }
+        {
+          models: groqMatcherModels,
+          label: 'skill_matching',
+        }
       )
       rawText = text
     } else {
@@ -146,7 +150,10 @@ export async function matchSkillsNode(
             company: state.company_name,
           },
         })
-      }, { models: claudeMatcherModels })
+      }, {
+        models: claudeMatcherModels,
+        label: 'skill_matching',
+      })
 
       rawText = normalizeResponseText(response.content)
     }
@@ -154,23 +161,46 @@ export async function matchSkillsNode(
     let parsedJson: unknown
     try {
       parsedJson = parseJsonFromModelText(rawText)
-    } catch {
+    } catch (error) {
+      logError('llm_skill_matching_parse_failed', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+        error: serializeError(error),
+      })
       return { error: 'Skill matching output had an invalid format.' }
     }
 
     const parsed = skillMatchesSchema.safeParse(parsedJson)
     if (!parsed.success) {
+      logError('llm_skill_matching_schema_validation_failed', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+      })
       return { error: 'Skill matching output had an invalid format.' }
     }
     const skill_matches: SkillMatches = parsed.data
     return { skill_matches }
   } catch (error) {
     if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
+      logWarn('llm_skill_matching_rate_limited', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+        error: serializeError(error),
+      })
       return {
         error: 'Skill matching is temporarily rate-limited. Please retry in about 60 seconds.',
       }
     }
 
+    logError('llm_skill_matching_failed', {
+      user_id: state.user_profile.id,
+      company: state.company_name,
+      provider: state.llm_provider,
+      error: serializeError(error),
+    })
     return { error: `Skill matching failed: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }

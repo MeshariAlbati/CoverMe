@@ -15,6 +15,7 @@ import {
 } from '@/lib/llm/groq'
 import { parseJsonFromModelText } from '@/lib/llm/json'
 import { getTavilyCompanyContext } from '@/lib/llm/tavily'
+import { logError, logWarn, serializeError } from '@/lib/server-logger'
 
 const companyResearchSchema = z.object({
   company_name: z.string(),
@@ -95,7 +96,10 @@ export async function researchCompanyNode(
           },
         ],
         1700,
-        { models: groqResearchModels }
+        {
+          models: groqResearchModels,
+          label: 'company_research',
+        }
       )
       researchText = text
     } else {
@@ -117,7 +121,10 @@ export async function researchCompanyNode(
               user_id: state.user_profile.id,
             },
           }) as Promise<Message>
-      , { models: researchModels })
+      , {
+        models: researchModels,
+        label: 'company_research',
+      })
 
       for (const block of response.content) {
         if (block.type === 'text') {
@@ -153,7 +160,10 @@ export async function researchCompanyNode(
               max_tokens: 1600,
               messages,
             }) as Promise<Message>
-        , { models: researchModels })
+        , {
+          models: researchModels,
+          label: 'company_research_follow_up',
+        })
 
         for (const block of followUp.content) {
           if (block.type === 'text') {
@@ -167,12 +177,23 @@ export async function researchCompanyNode(
     let parsedJson: unknown
     try {
       parsedJson = parseJsonFromModelText(researchText)
-    } catch {
+    } catch (error) {
+      logError('llm_research_parse_failed', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+        error: serializeError(error),
+      })
       return { error: 'Failed to parse company research output into the required format.' }
     }
 
     const parsed = companyResearchSchema.safeParse(parsedJson)
     if (!parsed.success) {
+      logError('llm_research_schema_validation_failed', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+      })
       return { error: 'Failed to parse company research output into the required format.' }
     }
     const company_research: CompanyResearch = parsed.data
@@ -180,12 +201,23 @@ export async function researchCompanyNode(
     return { company_research }
   } catch (error) {
     if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
+      logWarn('llm_research_rate_limited', {
+        user_id: state.user_profile.id,
+        company: state.company_name,
+        provider: state.llm_provider,
+        error: serializeError(error),
+      })
       return {
         error: `Research is temporarily rate-limited for ${state.company_name}. Please retry in about 60 seconds.`,
       }
     }
 
-    console.error('Company research error:', error)
+    logError('llm_research_failed', {
+      user_id: state.user_profile.id,
+      company: state.company_name,
+      provider: state.llm_provider,
+      error: serializeError(error),
+    })
     return {
       error: `Failed to research ${state.company_name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
     }
