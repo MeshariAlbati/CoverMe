@@ -2,7 +2,12 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { isAnthropicModelNotFoundError, withAnthropicModelFallback } from '@/lib/anthropic-model'
+import {
+  getStageAnthropicModels,
+  isAnthropicModelNotFoundError,
+  isAnthropicRateLimitError,
+  withAnthropicModelFallback,
+} from '@/lib/anthropic-model'
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,12 +56,13 @@ export async function POST(req: NextRequest) {
 
     // Call Claude to extract structured profile data
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+    const cvModels = getStageAnthropicModels('ANTHROPIC_CV_MODEL', 'ANTHROPIC_CV_MODELS')
     let response
     try {
       response = await withAnthropicModelFallback(model =>
         anthropic.messages.create({
           model,
-          max_tokens: 4096,
+          max_tokens: 1200,
           messages: [
             {
               role: 'user',
@@ -87,16 +93,22 @@ For education.year, use graduation year as a string.
 For work_experience.highlights, extract key achievements and responsibilities as an array of strings.
 
 CV TEXT:
-${rawText.slice(0, 15000)}`,
+${rawText.slice(0, 8000)}`,
             },
           ],
         })
-      )
+      , { models: cvModels })
     } catch (error) {
       if (isAnthropicModelNotFoundError(error)) {
         return NextResponse.json({
           error: 'The configured Anthropic model is unavailable. Set ANTHROPIC_MODEL to an accessible model (e.g., claude-sonnet-4-6).',
         }, { status: 500 })
+      }
+
+      if (isAnthropicRateLimitError(error)) {
+        return NextResponse.json({
+          error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
+        }, { status: 429 })
       }
 
       throw error

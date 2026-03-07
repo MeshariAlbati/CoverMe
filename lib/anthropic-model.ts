@@ -14,20 +14,45 @@ type AnthropicErrorShape = {
   }
 }
 
-export function getAnthropicModelCandidates(): string[] {
-  const singleModel = process.env.ANTHROPIC_MODEL?.trim()
-  const listedModels = (process.env.ANTHROPIC_MODELS || '')
+type AnthropicFallbackOptions = {
+  models?: string[]
+  maxRateLimitRetries?: number
+  retryBaseMs?: number
+}
+
+function parseModelList(value?: string): string[] {
+  return (value || '')
     .split(',')
     .map(model => model.trim())
     .filter(Boolean)
+}
+
+function unique(items: string[]): string[] {
+  return [...new Set(items)]
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export function getStageAnthropicModels(singleEnvKey: string, listEnvKey: string): string[] {
+  const singleModel = process.env[singleEnvKey]?.trim()
+  const listedModels = parseModelList(process.env[listEnvKey])
+  return unique([...(singleModel ? [singleModel] : []), ...listedModels])
+}
+
+export function getAnthropicModelCandidates(preferredModels: string[] = []): string[] {
+  const singleModel = process.env.ANTHROPIC_MODEL?.trim()
+  const listedModels = parseModelList(process.env.ANTHROPIC_MODELS)
 
   const combined = [
+    ...preferredModels,
     ...(singleModel ? [singleModel] : []),
     ...listedModels,
     ...DEFAULT_ANTHROPIC_MODELS,
   ]
 
-  return [...new Set(combined)]
+  return unique(combined)
 }
 
 export function isAnthropicModelNotFoundError(error: unknown): boolean {
@@ -51,19 +76,57 @@ export function isAnthropicModelNotFoundError(error: unknown): boolean {
   )
 }
 
+export function isAnthropicRateLimitError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const shaped = error as AnthropicErrorShape
+  const type = shaped.error?.type?.toLowerCase() || ''
+  const apiMessage = shaped.error?.message?.toLowerCase() || ''
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+
+  return (
+    shaped.status === 429 ||
+    type.includes('rate_limit') ||
+    apiMessage.includes('rate limit') ||
+    message.includes('rate limit')
+  )
+}
+
 export async function withAnthropicModelFallback<T>(
-  runner: (model: string) => Promise<T>
+  runner: (model: string) => Promise<T>,
+  options: AnthropicFallbackOptions = {}
 ): Promise<T> {
-  const models = getAnthropicModelCandidates()
+  const models = getAnthropicModelCandidates(options.models || [])
+  const maxRateLimitRetries = Number(process.env.ANTHROPIC_RATE_LIMIT_RETRIES || options.maxRateLimitRetries || 2)
+  const retryBaseMs = Number(process.env.ANTHROPIC_RETRY_BASE_MS || options.retryBaseMs || 1500)
   let lastError: unknown
 
   for (const model of models) {
-    try {
-      return await runner(model)
-    } catch (error) {
-      lastError = error
+    let attempt = 0
 
-      if (!isAnthropicModelNotFoundError(error)) {
+    while (attempt <= maxRateLimitRetries) {
+      try {
+        return await runner(model)
+      } catch (error) {
+        lastError = error
+
+        if (isAnthropicModelNotFoundError(error)) {
+          break
+        }
+
+        if (isAnthropicRateLimitError(error)) {
+          if (attempt < maxRateLimitRetries) {
+            const delay = retryBaseMs * 2 ** attempt
+            await sleep(delay)
+            attempt += 1
+            continue
+          }
+
+          break
+        }
+
         throw error
       }
     }

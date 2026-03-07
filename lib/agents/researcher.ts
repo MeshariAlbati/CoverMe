@@ -3,7 +3,11 @@ import type { Message } from '@anthropic-ai/sdk/resources/messages'
 import { z } from 'zod'
 import type { CoverLetterState } from './state'
 import type { CompanyResearch } from '@/types'
-import { withAnthropicModelFallback } from '@/lib/anthropic-model'
+import {
+  getStageAnthropicModels,
+  isAnthropicRateLimitError,
+  withAnthropicModelFallback,
+} from '@/lib/anthropic-model'
 
 const companyResearchSchema = z.object({
   company_name: z.string(),
@@ -36,11 +40,12 @@ export async function researchCompanyNode(
 
   try {
     const anthropic = getAnthropic()
+    const researchModels = getStageAnthropicModels('ANTHROPIC_RESEARCH_MODEL', 'ANTHROPIC_RESEARCH_MODELS')
     const response = await withAnthropicModelFallback(
       model =>
         anthropic.messages.create({
           model,
-          max_tokens: 4096,
+          max_tokens: 2000,
           tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
           messages: [
             {
@@ -78,7 +83,7 @@ Return this exact JSON structure:
             user_id: state.user_profile.id,
           },
         }) as Promise<Message>
-    )
+    , { models: researchModels })
 
     // Find the final text response
     let researchText = ''
@@ -114,10 +119,10 @@ Return this exact JSON structure:
         model =>
           getAnthropic().messages.create({
             model,
-            max_tokens: 4096,
+            max_tokens: 1600,
             messages,
           }) as Promise<Message>
-      )
+      , { models: researchModels })
 
       for (const block of followUp.content) {
         if (block.type === 'text') {
@@ -136,6 +141,12 @@ Return this exact JSON structure:
 
     return { company_research }
   } catch (error) {
+    if (isAnthropicRateLimitError(error)) {
+      return {
+        error: `Research is temporarily rate-limited for ${state.company_name}. Please retry in about 60 seconds.`,
+      }
+    }
+
     console.error('Company research error:', error)
     return {
       error: `Failed to research ${state.company_name}: ${error instanceof Error ? error.message : 'Unknown error'}`,

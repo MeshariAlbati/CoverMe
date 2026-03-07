@@ -1,13 +1,26 @@
 import { ChatAnthropic } from '@langchain/anthropic'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { CoverLetterState } from './state'
-import { withAnthropicModelFallback } from '@/lib/anthropic-model'
+import {
+  getStageAnthropicModels,
+  isAnthropicRateLimitError,
+  withAnthropicModelFallback,
+} from '@/lib/anthropic-model'
 
 const TONE_INSTRUCTIONS = {
   formal: 'Use professional, polished language. Maintain a formal register throughout. Avoid contractions.',
   conversational: 'Use warm, natural language. Contractions are fine. Sound like a real person writing a letter.',
   confident: 'Use assertive, direct language. Lead with impact. Show certainty without arrogance.',
   balanced: 'Balance professionalism with warmth. Confident but approachable.',
+}
+
+function trimText(value: unknown, max = 260): string {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
 }
 
 export async function writeLetterNode(
@@ -35,10 +48,11 @@ export async function writeLetterNode(
     : []
 
   try {
+    const writerModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
     const response = await withAnthropicModelFallback(async model => {
       const llm = new ChatAnthropic({
         model,
-        maxTokens: 2048,
+        maxTokens: 900,
         anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
       })
 
@@ -66,17 +80,17 @@ Name: ${state.user_profile.full_name}
 Title: ${state.user_profile.job_title}
 Years of Experience: ${state.user_profile.years_of_experience}
 Career Goal: ${state.user_profile.career_intent}
-What makes them unique: ${state.user_profile.unique_value}
-Proudest achievement: ${state.user_profile.proudest_achievement}
-${state.user_profile.things_to_emphasize ? `Emphasize: ${state.user_profile.things_to_emphasize}` : ''}
-${state.user_profile.things_to_downplay ? `Downplay: ${state.user_profile.things_to_downplay}` : ''}
+What makes them unique: ${trimText(state.user_profile.unique_value, 220)}
+Proudest achievement: ${trimText(state.user_profile.proudest_achievement, 240)}
+${state.user_profile.things_to_emphasize ? `Emphasize: ${trimText(state.user_profile.things_to_emphasize, 220)}` : ''}
+${state.user_profile.things_to_downplay ? `Downplay: ${trimText(state.user_profile.things_to_downplay, 220)}` : ''}
 
 COMPANY: ${state.company_research.company_name}
 Industry: ${state.company_research.industry}
-Mission: ${state.company_research.mission_and_values}
+Mission: ${trimText(state.company_research.mission_and_values, 700)}
 Culture keywords: ${cultureKeywords.join(', ')}
-What they look for: ${state.company_research.what_they_look_for}
-Recent context: ${recentNews.slice(0, 2).join('; ')}
+What they look for: ${trimText(state.company_research.what_they_look_for, 360)}
+Recent context: ${recentNews.slice(0, 2).map(item => trimText(item, 180)).join('; ')}
 Growth areas: ${growthAreas.join(', ')}
 
 NARRATIVE STRATEGY:
@@ -100,11 +114,17 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
           company: state.company_name,
         },
       })
-    })
+    }, { models: writerModels })
 
     const cover_letter = response.content as string
     return { cover_letter }
   } catch (error) {
+    if (isAnthropicRateLimitError(error)) {
+      return {
+        error: 'Cover letter generation is temporarily rate-limited. Please retry in about 60 seconds.',
+      }
+    }
+
     return { error: `Failed to write letter: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }
