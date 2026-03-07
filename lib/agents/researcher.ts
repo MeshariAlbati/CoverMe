@@ -3,6 +3,7 @@ import type { Message } from '@anthropic-ai/sdk/resources/messages'
 import { z } from 'zod'
 import type { CoverLetterState } from './state'
 import type { CompanyResearch } from '@/types'
+import { withAnthropicModelFallback } from '@/lib/anthropic-model'
 
 const companyResearchSchema = z.object({
   company_name: z.string(),
@@ -35,14 +36,16 @@ export async function researchCompanyNode(
 
   try {
     const anthropic = getAnthropic()
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6-20250514',
-      max_tokens: 4096,
-      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
-      messages: [
-        {
-          role: 'user',
-          content: `You are a company research specialist. Research "${state.company_name}" thoroughly and return ONLY a valid JSON object (no markdown, no explanation).
+    const response = await withAnthropicModelFallback(
+      model =>
+        anthropic.messages.create({
+          model,
+          max_tokens: 4096,
+          tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+          messages: [
+            {
+              role: 'user',
+              content: `You are a company research specialist. Research "${state.company_name}" thoroughly and return ONLY a valid JSON object (no markdown, no explanation).
 
 Search for and include:
 1. Company mission and values
@@ -69,12 +72,13 @@ Return this exact JSON structure:
   "key_leadership": [{"name": "", "role": ""}],
   "what_they_look_for": ""
 }`,
-        },
-      ],
-      metadata: {
-        user_id: state.user_profile.id,
-      },
-    }) as Message
+            },
+          ],
+          metadata: {
+            user_id: state.user_profile.id,
+          },
+        }) as Promise<Message>
+    )
 
     // Find the final text response
     let researchText = ''
@@ -106,11 +110,14 @@ Return this exact JSON structure:
         },
       ]
 
-      const followUp = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-6-20250514',
-        max_tokens: 4096,
-        messages,
-      }) as Message
+      const followUp = await withAnthropicModelFallback(
+        model =>
+          getAnthropic().messages.create({
+            model,
+            max_tokens: 4096,
+            messages,
+          }) as Promise<Message>
+      )
 
       for (const block of followUp.content) {
         if (block.type === 'text') {

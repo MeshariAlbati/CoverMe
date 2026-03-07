@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { isAnthropicModelNotFoundError, withAnthropicModelFallback } from '@/lib/anthropic-model'
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,12 +23,26 @@ export async function POST(req: NextRequest) {
 
     let rawText = ''
     try {
+      // pdf-parse v2 uses PDFParse class, not pdfParse(buffer) function.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse')
-      const pdfData = await pdfParse(buffer)
-      rawText = pdfData.text
-    } catch {
-      return NextResponse.json({ error: 'Failed to parse PDF. Please ensure the file is not password protected.' }, { status: 400 })
+      const { PDFParse } = require('pdf-parse')
+      const parser = new PDFParse({ data: buffer })
+
+      try {
+        const pdfData = await parser.getText()
+        rawText = pdfData.text
+      } finally {
+        await parser.destroy()
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : ''
+      const isPasswordError = message.includes('password')
+
+      if (isPasswordError) {
+        return NextResponse.json({ error: 'Failed to parse PDF. Please ensure the file is not password protected.' }, { status: 400 })
+      }
+
+      return NextResponse.json({ error: 'Failed to parse PDF. Please try another PDF export or re-save the file and upload again.' }, { status: 400 })
     }
 
     if (!rawText.trim()) {
@@ -36,13 +51,16 @@ export async function POST(req: NextRequest) {
 
     // Call Claude to extract structured profile data
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6-20250514',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
+    let response
+    try {
+      response = await withAnthropicModelFallback(model =>
+        anthropic.messages.create({
+          model,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: 'user',
+              content: `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
 
 If a field is not found, use null for strings or empty arrays for arrays.
 
@@ -70,9 +88,19 @@ For work_experience.highlights, extract key achievements and responsibilities as
 
 CV TEXT:
 ${rawText.slice(0, 15000)}`,
-        },
-      ],
-    })
+            },
+          ],
+        })
+      )
+    } catch (error) {
+      if (isAnthropicModelNotFoundError(error)) {
+        return NextResponse.json({
+          error: 'The configured Anthropic model is unavailable. Set ANTHROPIC_MODEL to an accessible model (e.g., claude-sonnet-4-6).',
+        }, { status: 500 })
+      }
+
+      throw error
+    }
 
     const content = response.content[0]
     if (content.type !== 'text') {

@@ -1,14 +1,7 @@
 import { ChatAnthropic } from '@langchain/anthropic'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { CoverLetterState } from './state'
-
-function getLLM() {
-  return new ChatAnthropic({
-    model: 'claude-sonnet-4-6-20250514',
-    maxTokens: 2048,
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
-  })
-}
+import { withAnthropicModelFallback } from '@/lib/anthropic-model'
 
 const TONE_INSTRUCTIONS = {
   formal: 'Use professional, polished language. Maintain a formal register throughout. Avoid contractions.',
@@ -42,8 +35,15 @@ export async function writeLetterNode(
     : []
 
   try {
-    const response = await getLLM().invoke([
-      new SystemMessage(`You are an expert cover letter writer who crafts compelling, highly personalized cover letters.
+    const response = await withAnthropicModelFallback(async model => {
+      const llm = new ChatAnthropic({
+        model,
+        maxTokens: 2048,
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+      })
+
+      return llm.invoke([
+        new SystemMessage(`You are an expert cover letter writer who crafts compelling, highly personalized cover letters.
 
 TONE INSTRUCTIONS: ${TONE_INSTRUCTIONS[tone]}
 
@@ -93,12 +93,13 @@ Bridge story to use:
 ${bridgeStories.slice(0, 1).map(b => `${b.experience}: ${b.narrative_angle}`).join('\n')}
 
 Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably written for ${state.company_research.company_name}.`),
-    ], {
-      metadata: {
-        run_name: 'letter-writing',
-        user_id: state.user_profile.id,
-        company: state.company_name,
-      },
+      ], {
+        metadata: {
+          run_name: 'letter-writing',
+          user_id: state.user_profile.id,
+          company: state.company_name,
+        },
+      })
     })
 
     const cover_letter = response.content as string
