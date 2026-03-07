@@ -2,6 +2,11 @@
 
 Generate highly personalized cover letters using a 4-agent AI pipeline: company research → skill matching → letter writing. Users can switch providers (`Claude` or `Groq`) from the UI.
 
+## Maintainer
+
+- Created by **Eng.Meshari**
+- Contact: **0553323624**
+
 ## Tech Stack
 
 - **Next.js 16** (App Router, TypeScript)
@@ -106,6 +111,15 @@ Agent 1 (CV Parser) runs separately at upload time.
 - **Download** — export as .txt file
 - **Feedback** — thumbs up/down on each letter
 
+## Observability Logs
+
+The app writes structured JSON logs to server stdout/stderr (Railway logs), including:
+
+- Auth events: login success/failure, callback failures, protected-route redirects
+- Cover letter generation lifecycle: start, per-node failures, save/cleanup failures, completion
+- CV extraction events: parse issues, provider/model failures, rate limits, completion
+- LLM provider internals: Anthropic/Groq model fallback, rate limits, and hard errors
+
 ## Deploy To Railway
 
 This repo now includes `railway.json` for a standard Nixpacks deploy.
@@ -148,3 +162,7 @@ Optional:
 ### 4. Redeploy
 
 Trigger a deploy after setting variables. Railway provides `PORT` automatically, and Next.js will bind to it in production.
+
+### 5. Service Domain Target Port
+
+When generating a Railway service domain, use target port **`8080`**.

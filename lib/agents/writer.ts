@@ -51,6 +51,32 @@ function normalizeResponseText(content: unknown): string {
   return ''
 }
 
+function buildProofPoints(state: CoverLetterState): string[] {
+  const experiences = Array.isArray(state.user_profile.work_experience)
+    ? state.user_profile.work_experience
+    : []
+
+  const points = experiences
+    .slice(0, 4)
+    .flatMap(exp => {
+      const title = trimText(exp.title, 60)
+      const company = trimText(exp.company, 60)
+      const highlights = Array.isArray(exp.highlights) ? exp.highlights : []
+      return highlights
+        .slice(0, 2)
+        .map(highlight => {
+          const normalizedHighlight = trimText(highlight, 180)
+          if (!normalizedHighlight) return ''
+
+          const roleLabel = [title, company].filter(Boolean).join(' @ ')
+          return roleLabel ? `${roleLabel}: ${normalizedHighlight}` : normalizedHighlight
+        })
+        .filter(Boolean)
+    })
+
+  return [...new Set(points)].filter(Boolean).slice(0, 4)
+}
+
 export async function writeLetterNode(
   state: CoverLetterState
 ): Promise<Partial<CoverLetterState>> {
@@ -74,27 +100,34 @@ export async function writeLetterNode(
   const bridgeStories = Array.isArray(state.skill_matches.bridge_stories)
     ? state.skill_matches.bridge_stories
     : []
+  const proofPoints = buildProofPoints(state)
 
   try {
     const claudeWriterModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
     const groqWriterModels = getGroqStageModels('GROQ_WRITER_MODEL', 'GROQ_WRITER_MODELS')
 
-    const systemPrompt = `You are an expert cover letter writer who crafts compelling, highly personalized cover letters.
+    const systemPrompt = `You are an expert cover letter writer who crafts concise, high-conviction, personalized letters.
 
 TONE INSTRUCTIONS: ${TONE_INSTRUCTIONS[tone]}
 
 CRITICAL RULES:
-- NEVER start with "I am writing to express my interest" or any variation
-- NEVER use "I believe I would be a great fit"
-- NEVER use "I am passionate about" as an opener
-- NEVER use generic filler phrases
-- Make EVERY sentence earn its place
-- Reference SPECIFIC company details from the research provided
-- Sound human and authentic — not AI-generated
-- Keep to 3-4 tight paragraphs
-- Open with a compelling hook that connects the candidate to THIS specific company
-- Close with enthusiasm and a clear call to action
-- Do NOT include date, address headers, or sign-off — just the body paragraphs`
+- Return EXACTLY 3 short paragraphs
+- Target 190-240 words total
+- Do NOT include date, address headers, greeting, or sign-off
+- Make the letter value-first: at least 70% about the candidate's impact, max 30% about praising the company
+- Show 3 things clearly:
+  1) Understanding of the company context
+  2) What the candidate has done (evidence)
+  3) Exactly how the candidate will help this team
+- Use at least 2 concrete proof points from the candidate profile
+- Avoid repetition and generic claims
+- NEVER use these phrases:
+  - "I am writing to express my interest"
+  - "I believe I would be a great fit"
+  - "I am passionate about"
+  - "I'm excited"
+  - "I am excited"
+- Use specific, outcome-oriented language instead of praise-heavy language`
 
     const userPrompt = `Write a cover letter using this information:
 
@@ -126,10 +159,23 @@ ${topMatches
   .map(m => `- ${m.user_skill_or_experience} → ${m.company_need_it_addresses}: ${m.suggested_framing}`)
   .join('\n')}
 
+PROOF POINTS TO PRIORITIZE (use at least 2):
+${proofPoints.length > 0 ? proofPoints.map(point => `- ${point}`).join('\n') : '- Use the strongest concrete achievements available from the profile.'}
+
 Bridge story to use:
 ${bridgeStories.slice(0, 1).map(b => `${b.experience}: ${b.narrative_angle}`).join('\n')}
 
-Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably written for ${state.company_research.company_name}.`
+Write EXACTLY 3 short paragraphs and keep it concise.
+
+Paragraph goals:
+1) Show you understand ${state.company_research.company_name} and immediately position the candidate's value.
+2) Prove capability with concrete achievements and outcomes.
+3) Explain how this background helps the role now (clear forward impact, not generic praise).
+
+Self-check before final output:
+- Is the letter too long or repetitive? If yes, tighten.
+- Does it over-praise the company? If yes, reduce praise and increase candidate impact.
+- Does it clearly show company understanding, past achievements, and future value? If not, revise.`
 
     let cover_letter = ''
     if (state.llm_provider === 'groq') {
@@ -138,7 +184,7 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        900,
+        700,
         {
           models: groqWriterModels,
           label: 'letter_writing',
@@ -149,7 +195,7 @@ Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably writt
       const response = await withAnthropicModelFallback(async model => {
         const llm = new ChatAnthropic({
           model,
-          maxTokens: 900,
+          maxTokens: 700,
           anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
         })
 
