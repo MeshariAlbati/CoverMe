@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CoverMe — AI-Powered Cover Letter Generator
 
-## Getting Started
+Generate highly personalized cover letters using a 4-agent AI pipeline: company research → skill matching → letter writing.
 
-First, run the development server:
+## Tech Stack
+
+- **Next.js 16** (App Router, TypeScript)
+- **Tailwind CSS** + **shadcn/ui**
+- **Supabase** (Auth + PostgreSQL + Storage)
+- **LangGraph** (multi-agent orchestration)
+- **Claude API** (`claude-sonnet-4-6-20250514`) with web search
+
+## Setup
+
+### 1. Environment Variables
+
+Copy `.env.example` to `.env.local` and fill in your keys:
+
+```bash
+cp .env.example .env.local
+```
+
+Required:
+- `NEXT_PUBLIC_SUPABASE_URL` — from your Supabase project settings
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase project settings
+- `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings (keep secret)
+- `ANTHROPIC_API_KEY` — from console.anthropic.com
+
+Optional (for tracing):
+- `LANGCHAIN_API_KEY` — from smith.langchain.com
+
+### 2. Database Setup
+
+Run the SQL migration in your Supabase SQL editor:
+
+```
+supabase/migrations/001_initial_schema.sql
+```
+
+This creates:
+- `profiles` table with RLS policies
+- `cover_letters` table with RLS policies
+- `cvs` storage bucket with per-user access policies
+- Auto-profile creation trigger on signup
+- Updated_at trigger on profiles
+
+### 3. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## User Flow
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Sign up** at `/signup`
+2. **Upload CV** at `/profile` — AI auto-extracts your info
+3. **Answer profiling questions** — tone, career intent, unique value, achievements
+4. **Go to Dashboard** `/dashboard` — enter any company name
+5. **Watch generation** — real-time pipeline: research → match → write
+6. **View, copy, download, or regenerate** your cover letter
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Agent Pipeline
 
-## Learn More
+```
+User Input (company name)
+       ↓
+Agent 2: Company Researcher
+  - Uses Claude web_search tool
+  - Returns: mission, culture, news, tech stack, growth areas
+       ↓
+Agent 3: Skill Matcher
+  - Matches your profile to company needs
+  - Identifies bridge stories and narrative arc
+       ↓
+Agent 4: Letter Writer
+  - Writes polished, tone-matched cover letter
+  - References specific company details
+  - Avoids generic AI phrases
+```
 
-To learn more about Next.js, take a look at the following resources:
+Agent 1 (CV Parser) runs separately at upload time.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/extract-cv` | POST | Upload PDF → extract profile data |
+| `/api/generate-cover-letter` | POST | Run pipeline, stream progress via SSE |
+| `/api/cover-letters` | GET | List user's cover letters |
+| `/api/cover-letters/[id]` | GET/PATCH/DELETE | Manage individual letter |
 
-## Deploy on Vercel
+## Key Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Streaming UX** — SSE streams pipeline progress in real-time
+- **Company research cache** — 7-day TTL to avoid redundant API calls
+- **Rate limiting** — 10 generations per user per hour
+- **Edit mode** — manually edit generated letters
+- **Download** — export as .txt file
+- **Feedback** — thumbs up/down on each letter
