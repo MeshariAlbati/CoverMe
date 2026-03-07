@@ -15,6 +15,7 @@ import {
   isGroqModelNotFoundError,
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
+import { parseJsonFromModelText } from '@/lib/llm/json'
 
 function getCvExtractionPrompt(rawText: string): string {
   return `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
@@ -45,10 +46,6 @@ For work_experience.highlights, extract key achievements and responsibilities as
 
 CV TEXT:
 ${rawText.slice(0, 8000)}`
-}
-
-function stripJsonFence(text: string): string {
-  return text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
 }
 
 export async function POST(req: NextRequest) {
@@ -175,8 +172,7 @@ export async function POST(req: NextRequest) {
 
     let extracted
     try {
-      const text = stripJsonFence(llmText)
-      extracted = JSON.parse(text)
+      extracted = parseJsonFromModelText(llmText)
     } catch {
       return NextResponse.json({ error: 'Failed to parse AI extraction response' }, { status: 500 })
     }

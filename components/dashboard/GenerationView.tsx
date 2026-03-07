@@ -15,6 +15,7 @@ import ProviderPicker from '@/components/ui/provider-picker'
 
 interface Props {
   coverLetter: CoverLetter
+  userFullName: string
 }
 
 const GENERATION_PROVIDER_STORAGE_KEY = 'coverme.generation-provider'
@@ -77,7 +78,46 @@ function ActionButton({
   )
 }
 
-export default function GenerationView({ coverLetter }: Props) {
+function slugifyForFilename(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'document'
+}
+
+function normalizeParagraphs(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+}
+
+function buildProfessionalSections(text: string, safeUserName: string): string[] {
+  const paragraphs = normalizeParagraphs(text)
+  const first = paragraphs[0] || ''
+  const last = paragraphs[paragraphs.length - 1] || ''
+  const hasSalutation = /^dear\s+/i.test(first)
+  const hasClosing = /(sincerely|best regards|kind regards|regards),?$/i.test(last)
+
+  const sections: string[] = []
+  if (!hasSalutation) {
+    sections.push('Dear Hiring Manager,')
+  }
+
+  sections.push(...paragraphs)
+
+  if (!hasClosing) {
+    sections.push('Sincerely,')
+    sections.push(safeUserName)
+  }
+
+  return sections
+}
+
+export default function GenerationView({ coverLetter, userFullName }: Props) {
+  const safeUserName = userFullName?.trim() || 'Candidate'
   const router = useRouter()
   const [llmProvider, setLlmProvider] = useState<LLMProvider>('groq')
   const [letter, setLetter] = useState(coverLetter.cover_letter_text)
@@ -116,43 +156,50 @@ export default function GenerationView({ coverLetter }: Props) {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-    const marginLeft = 25
-    const marginRight = 25
-    const marginTop = 30
+    const marginLeft = 25.4
+    const marginRight = 25.4
+    const marginTop = 24
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const usableWidth = pageWidth - marginLeft - marginRight
-    const lineHeight = 7
-    const date = new Date(coverLetter.created_at).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric',
-    })
+    const lineHeight = 6.4
 
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(120, 120, 120)
-    doc.text(date, marginLeft, marginTop)
+    // Professional cover letter layout in Times style (business letter format).
+    let y = marginTop
+    doc.setFont('times', 'bold')
+    doc.setFontSize(14)
+    doc.setTextColor(20, 20, 20)
+    doc.text(safeUserName, marginLeft, y)
 
+    y += 7.5
+    doc.setFont('times', 'normal')
     doc.setFontSize(11)
-    doc.setTextColor(30, 30, 30)
-    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(80, 80, 80)
+    doc.text(`Application to ${coverLetter.company_name}`, marginLeft, y)
 
-    let y = marginTop + 14
-    const paragraphs = letter.split('\n\n').filter(p => p.trim())
+    y += 9
+    doc.setFont('times', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(25, 25, 25)
+    const sections = buildProfessionalSections(letter, safeUserName)
 
-    for (const paragraph of paragraphs) {
+    for (const paragraph of sections) {
       const lines = doc.splitTextToSize(paragraph.trim(), usableWidth)
       for (const line of lines) {
         if (y + lineHeight > pageHeight - 20) {
           doc.addPage()
           y = marginTop
+          doc.setFont('times', 'normal')
+          doc.setFontSize(12)
+          doc.setTextColor(25, 25, 25)
         }
         doc.text(line, marginLeft, y)
         y += lineHeight
       }
-      y += lineHeight * 0.6
+      y += 3.5
     }
 
-    const filename = `cover-letter-${coverLetter.company_name.replace(/\s+/g, '-').toLowerCase()}.pdf`
+    const filename = `${slugifyForFilename(safeUserName)}-${slugifyForFilename(coverLetter.company_name)}.pdf`
     doc.save(filename)
   }
 

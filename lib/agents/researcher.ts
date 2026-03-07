@@ -13,6 +13,7 @@ import {
   getGroqStageModels,
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
+import { parseJsonFromModelText } from '@/lib/llm/json'
 import { getTavilyCompanyContext } from '@/lib/llm/tavily'
 
 const companyResearchSchema = z.object({
@@ -163,8 +164,14 @@ export async function researchCompanyNode(
       }
     }
 
-    const jsonText = researchText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
-    const parsed = companyResearchSchema.safeParse(JSON.parse(jsonText))
+    let parsedJson: unknown
+    try {
+      parsedJson = parseJsonFromModelText(researchText)
+    } catch {
+      return { error: 'Failed to parse company research output into the required format.' }
+    }
+
+    const parsed = companyResearchSchema.safeParse(parsedJson)
     if (!parsed.success) {
       return { error: 'Failed to parse company research output into the required format.' }
     }

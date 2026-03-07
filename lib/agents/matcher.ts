@@ -13,6 +13,7 @@ import {
   getGroqStageModels,
   isGroqRateLimitError,
 } from '@/lib/llm/groq'
+import { parseJsonFromModelText } from '@/lib/llm/json'
 
 const skillMatchSchema = z.object({
   user_skill_or_experience: z.string(),
@@ -150,8 +151,14 @@ export async function matchSkillsNode(
       rawText = normalizeResponseText(response.content)
     }
 
-    const text = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
-    const parsed = skillMatchesSchema.safeParse(JSON.parse(text))
+    let parsedJson: unknown
+    try {
+      parsedJson = parseJsonFromModelText(rawText)
+    } catch {
+      return { error: 'Skill matching output had an invalid format.' }
+    }
+
+    const parsed = skillMatchesSchema.safeParse(parsedJson)
     if (!parsed.success) {
       return { error: 'Skill matching output had an invalid format.' }
     }
