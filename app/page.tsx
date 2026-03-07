@@ -418,7 +418,7 @@ export default function LandingPage() {
             <span className="font-serif text-[16px]" style={{ color: '#E5C07B' }}>Me</span>
           </div>
           <p className="font-mono text-[11px]" style={{ color: '#555559' }}>
-            © 2026 CoverMe
+            Created by Eng.Meshari • Contact: 0553323624
           </p>
         </div>
       </footer>
