@@ -4,10 +4,25 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
 import type { Profile } from '@/types'
 import { resolveLlmProvider } from '@/lib/llm/provider'
-import { logError, logInfo, logWarn, serializeError } from '@/lib/server-logger'
+import { logError, logInfo, logWarn, maskEmail, serializeError } from '@/lib/server-logger'
 
 // Simple in-memory rate limiting (per user, 10 per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+const DEFAULT_CLAUDE_COVER_LETTER_ALLOWED_EMAIL = 'meshari.albati@gmail.com'
+
+function parseAllowedClaudeEmails(): string[] {
+  const raw = process.env.CLAUDE_COVER_LETTER_ALLOWED_EMAILS || DEFAULT_CLAUDE_COVER_LETTER_ALLOWED_EMAIL
+  return raw
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function canUseClaudeForCoverLetter(email?: string | null): boolean {
+  if (!email) return false
+  return parseAllowedClaudeEmails().includes(email.trim().toLowerCase())
+}
 
 function checkRateLimit(userId: string): boolean {
   const now = Date.now()
@@ -53,9 +68,23 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const companyName = typeof body?.company_name === 'string' ? body.company_name : ''
-  const llmProvider = resolveLlmProvider(body?.provider)
+  const requestedProvider = resolveLlmProvider(body?.provider)
+  const isClaudeAllowedForUser = canUseClaudeForCoverLetter(user.email)
+  const llmProvider =
+    requestedProvider === 'claude' && !isClaudeAllowedForUser
+      ? 'groq'
+      : requestedProvider
   const regenerate_id = typeof body?.regenerate_id === 'string' ? body.regenerate_id : undefined
   const normalizedCompanyName = companyName.trim()
+
+  if (requestedProvider === 'claude' && llmProvider === 'groq') {
+    logWarn('cover_letter_claude_restricted_user', {
+      request_id: requestId,
+      user_id: user.id,
+      email: maskEmail(user.email),
+      fallback_provider: 'groq',
+    })
+  }
 
   if (!normalizedCompanyName) {
     logWarn('cover_letter_generation_missing_company', {
