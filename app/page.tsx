@@ -209,7 +209,7 @@ function HowItWorks() {
     },
     {
       num: '03',
-      title: 'Get a tailored letter in 30 seconds',
+      title: 'Get a tailored letter in 5 seconds',
       desc: 'The writer agent synthesizes everything into a letter that references real company details and frames your specific experience toward their specific needs.',
     },
   ]
@@ -288,7 +288,7 @@ function Differentiator() {
           </div>
 
           {/* Comparison */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div
               className="rounded-lg border p-4"
               style={{ backgroundColor: '#111113', borderColor: '#222228' }}

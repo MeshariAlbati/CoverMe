@@ -277,7 +277,7 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
                 lockedClaudeMessage="Sorry but it cost a lot ): "
               />
             </div>
-            <form onSubmit={handleGenerate} className="flex gap-3">
+            <form onSubmit={handleGenerate} className="flex flex-col sm:flex-row gap-3">
               <input
                 ref={inputRef}
                 value={companyName}
@@ -306,7 +306,7 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
               <button
                 type="submit"
                 disabled={generating || !companyName.trim() || profileIncomplete}
-                className="h-10 px-5 rounded text-[14px] font-medium transition-all duration-200 flex items-center gap-2 whitespace-nowrap"
+                className="h-10 px-5 rounded text-[14px] font-medium transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap sm:w-auto w-full"
                 style={{
                   backgroundColor: '#E5C07B',
                   color: '#0A0A0B',

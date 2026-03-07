@@ -278,11 +278,11 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
         <div className="max-w-[860px] mx-auto px-6 sm:px-8 py-10 space-y-6">
 
           {/* Header */}
-          <div className="flex items-center justify-between animate-fade-up">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-up">
             <div className="flex items-center gap-4">
               <Link href="/dashboard">
                 <button
-                  className="h-8 px-3 rounded text-[13px] flex items-center gap-1.5 transition-colors"
+                  className="h-8 px-3 rounded text-[13px] flex items-center gap-1.5 transition-colors flex-shrink-0"
                   style={{ color: '#555559', border: '1px solid #222228' }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#8A8A8E')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
@@ -291,9 +291,9 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
                   Back
                 </button>
               </Link>
-              <div>
+              <div className="min-w-0">
                 <h1
-                  className="font-serif text-[28px] leading-tight tracking-[-0.02em]"
+                  className="font-serif text-[24px] sm:text-[28px] leading-tight tracking-[-0.02em] truncate"
                   style={{ color: '#EDEDEF' }}
                 >
                   {coverLetter.company_name}
@@ -307,7 +307,7 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
             </div>
 
             {/* Feedback */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 sm:flex-shrink-0">
               <span className="text-[12px]" style={{ color: '#555559' }}>Helpful?</span>
               <button
                 onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
@@ -402,7 +402,7 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
             </div>
 
             {/* Letter content */}
-            <div className="px-8 py-8">
+            <div className="px-4 sm:px-8 py-6 sm:py-8">
               {editing ? (
                 <div className="space-y-4">
                   <textarea
