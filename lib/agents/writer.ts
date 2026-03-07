@@ -77,6 +77,18 @@ function buildProofPoints(state: CoverLetterState): string[] {
   return [...new Set(points)].filter(Boolean).slice(0, 4)
 }
 
+function buildCertificationProofPoints(state: CoverLetterState): string[] {
+  const certifications = Array.isArray(state.user_profile.certifications)
+    ? state.user_profile.certifications
+    : []
+
+  return certifications
+    .map(cert => trimText(cert, 120))
+    .filter(Boolean)
+    .slice(0, 4)
+    .map(cert => `Certification: ${cert}`)
+}
+
 export async function writeLetterNode(
   state: CoverLetterState
 ): Promise<Partial<CoverLetterState>> {
@@ -100,7 +112,12 @@ export async function writeLetterNode(
   const bridgeStories = Array.isArray(state.skill_matches.bridge_stories)
     ? state.skill_matches.bridge_stories
     : []
-  const proofPoints = buildProofPoints(state)
+  const experienceProofPoints = buildProofPoints(state)
+  const certificationProofPoints = buildCertificationProofPoints(state)
+  const proofPoints = [...experienceProofPoints, ...certificationProofPoints].slice(0, 6)
+  const certifications = Array.isArray(state.user_profile.certifications)
+    ? state.user_profile.certifications
+    : []
 
   try {
     const claudeWriterModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
@@ -120,14 +137,16 @@ CRITICAL RULES:
   2) What the candidate has done (evidence)
   3) Exactly how the candidate will help this team
 - Use at least 2 concrete proof points from the candidate profile
+- If relevant certifications exist, use at least one as supporting evidence
 - Avoid repetition and generic claims
 - NEVER use these phrases:
   - "I am writing to express my interest"
   - "I believe I would be a great fit"
-  - "I am passionate about"
+- "I am passionate about"
   - "I'm excited"
   - "I am excited"
-- Use specific, outcome-oriented language instead of praise-heavy language`
+- Use specific, outcome-oriented language instead of praise-heavy language
+- Never invent certifications or credentials that are not provided`
 
     const userPrompt = `Write a cover letter using this information:
 
@@ -138,6 +157,7 @@ Years of Experience: ${state.user_profile.years_of_experience}
 Career Goal: ${state.user_profile.career_intent}
 What makes them unique: ${trimText(state.user_profile.unique_value, 220)}
 Proudest achievement: ${trimText(state.user_profile.proudest_achievement, 240)}
+Certifications: ${certifications.length > 0 ? certifications.join(', ') : 'None provided'}
 ${state.user_profile.things_to_emphasize ? `Emphasize: ${trimText(state.user_profile.things_to_emphasize, 220)}` : ''}
 ${state.user_profile.things_to_downplay ? `Downplay: ${trimText(state.user_profile.things_to_downplay, 220)}` : ''}
 
