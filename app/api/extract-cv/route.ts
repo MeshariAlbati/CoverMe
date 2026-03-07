@@ -8,11 +8,55 @@ import {
   isAnthropicRateLimitError,
   withAnthropicModelFallback,
 } from '@/lib/anthropic-model'
+import { resolveLlmProvider } from '@/lib/llm/provider'
+import {
+  chatWithGroq,
+  getGroqStageModels,
+  isGroqModelNotFoundError,
+  isGroqRateLimitError,
+} from '@/lib/llm/groq'
+
+function getCvExtractionPrompt(rawText: string): string {
+  return `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
+
+If a field is not found, use null for strings or empty arrays for arrays.
+
+Return this exact structure:
+{
+  "full_name": "",
+  "email": "",
+  "phone": "",
+  "linkedin_url": "",
+  "location": "",
+  "job_title": "",
+  "years_of_experience": 0,
+  "skills": [],
+  "education": [{"degree": "", "institution": "", "year": ""}],
+  "work_experience": [{"title": "", "company": "", "duration": "", "highlights": []}],
+  "certifications": [],
+  "languages": []
+}
+
+For years_of_experience, calculate based on work history dates. Return a number only.
+For job_title, use the most recent or current position.
+For skills, extract all mentioned technical and soft skills as an array of strings.
+For education.year, use graduation year as a string.
+For work_experience.highlights, extract key achievements and responsibilities as an array of strings.
+
+CV TEXT:
+${rawText.slice(0, 8000)}`
+}
+
+function stripJsonFence(text: string): string {
+  return text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
+}
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
+    const providerInput = formData.get('provider')
+    const llmProvider = resolveLlmProvider(typeof providerInput === 'string' ? providerInput : undefined)
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
@@ -54,74 +98,84 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not extract text from PDF. The file may be scanned or image-based.' }, { status: 400 })
     }
 
-    // Call Claude to extract structured profile data
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-    const cvModels = getStageAnthropicModels('ANTHROPIC_CV_MODEL', 'ANTHROPIC_CV_MODELS')
-    let response
-    try {
-      response = await withAnthropicModelFallback(model =>
-        anthropic.messages.create({
-          model,
-          max_tokens: 1200,
-          messages: [
+    const prompt = getCvExtractionPrompt(rawText)
+    let llmText = ''
+    if (llmProvider === 'groq') {
+      try {
+        const groqCvModels = getGroqStageModels('GROQ_CV_MODEL', 'GROQ_CV_MODELS')
+        const response = await chatWithGroq(
+          [
+            {
+              role: 'system',
+              content: 'You are a CV parsing expert. Return ONLY valid JSON.',
+            },
             {
               role: 'user',
-              content: `You are a CV parsing expert. Extract the following fields from this CV text and return ONLY valid JSON with no markdown, no explanation, just the raw JSON object.
-
-If a field is not found, use null for strings or empty arrays for arrays.
-
-Return this exact structure:
-{
-  "full_name": "",
-  "email": "",
-  "phone": "",
-  "linkedin_url": "",
-  "location": "",
-  "job_title": "",
-  "years_of_experience": 0,
-  "skills": [],
-  "education": [{"degree": "", "institution": "", "year": ""}],
-  "work_experience": [{"title": "", "company": "", "duration": "", "highlights": []}],
-  "certifications": [],
-  "languages": []
-}
-
-For years_of_experience, calculate based on work history dates. Return a number only.
-For job_title, use the most recent or current position.
-For skills, extract all mentioned technical and soft skills as an array of strings.
-For education.year, use graduation year as a string.
-For work_experience.highlights, extract key achievements and responsibilities as an array of strings.
-
-CV TEXT:
-${rawText.slice(0, 8000)}`,
+              content: prompt,
             },
           ],
-        })
-      , { models: cvModels })
-    } catch (error) {
-      if (isAnthropicModelNotFoundError(error)) {
-        return NextResponse.json({
-          error: 'The configured Anthropic model is unavailable. Set ANTHROPIC_MODEL to an accessible model (e.g., claude-sonnet-4-6).',
-        }, { status: 500 })
+          1100,
+          { models: groqCvModels }
+        )
+        llmText = response.text
+      } catch (error) {
+        if (isGroqModelNotFoundError(error)) {
+          return NextResponse.json({
+            error: 'The configured Groq model is unavailable. Set GROQ_CV_MODEL to an accessible model.',
+          }, { status: 500 })
+        }
+
+        if (isGroqRateLimitError(error)) {
+          return NextResponse.json({
+            error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
+          }, { status: 429 })
+        }
+
+        throw error
+      }
+    } else {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+      const cvModels = getStageAnthropicModels('ANTHROPIC_CV_MODEL', 'ANTHROPIC_CV_MODELS')
+      let response
+      try {
+        response = await withAnthropicModelFallback(model =>
+          anthropic.messages.create({
+            model,
+            max_tokens: 1200,
+            messages: [
+              {
+                role: 'user',
+                content: prompt,
+              },
+            ],
+          })
+        , { models: cvModels })
+      } catch (error) {
+        if (isAnthropicModelNotFoundError(error)) {
+          return NextResponse.json({
+            error: 'The configured Anthropic model is unavailable. Set ANTHROPIC_MODEL to an accessible model (e.g., claude-sonnet-4-6).',
+          }, { status: 500 })
+        }
+
+        if (isAnthropicRateLimitError(error)) {
+          return NextResponse.json({
+            error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
+          }, { status: 429 })
+        }
+
+        throw error
       }
 
-      if (isAnthropicRateLimitError(error)) {
-        return NextResponse.json({
-          error: 'CV extraction is temporarily rate-limited. Please wait 30-60 seconds and try again.',
-        }, { status: 429 })
+      const content = response.content[0]
+      if (content.type !== 'text') {
+        return NextResponse.json({ error: 'Unexpected response from AI' }, { status: 500 })
       }
-
-      throw error
-    }
-
-    const content = response.content[0]
-    if (content.type !== 'text') {
-      return NextResponse.json({ error: 'Unexpected response from AI' }, { status: 500 })
+      llmText = content.text
     }
 
     let extracted
     try {
-      const text = content.text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
+      const text = stripJsonFence(llmText)
       extracted = JSON.parse(text)
     } catch {
       return NextResponse.json({ error: 'Failed to parse AI extraction response' }, { status: 500 })

@@ -6,6 +6,11 @@ import {
   isAnthropicRateLimitError,
   withAnthropicModelFallback,
 } from '@/lib/anthropic-model'
+import {
+  chatWithGroq,
+  getGroqStageModels,
+  isGroqRateLimitError,
+} from '@/lib/llm/groq'
 
 const TONE_INSTRUCTIONS = {
   formal: 'Use professional, polished language. Maintain a formal register throughout. Avoid contractions.',
@@ -21,6 +26,28 @@ function trimText(value: unknown, max = 260): string {
 
   const normalized = value.replace(/\s+/g, ' ').trim()
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
+}
+
+function normalizeResponseText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map(block => {
+        if (!block || typeof block !== 'object') return ''
+        if ('type' in block && (block as { type?: string }).type === 'text' && 'text' in block) {
+          const text = (block as { text?: unknown }).text
+          return typeof text === 'string' ? text : ''
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return ''
 }
 
 export async function writeLetterNode(
@@ -48,16 +75,10 @@ export async function writeLetterNode(
     : []
 
   try {
-    const writerModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
-    const response = await withAnthropicModelFallback(async model => {
-      const llm = new ChatAnthropic({
-        model,
-        maxTokens: 900,
-        anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
-      })
+    const claudeWriterModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
+    const groqWriterModels = getGroqStageModels('GROQ_WRITER_MODEL', 'GROQ_WRITER_MODELS')
 
-      return llm.invoke([
-        new SystemMessage(`You are an expert cover letter writer who crafts compelling, highly personalized cover letters.
+    const systemPrompt = `You are an expert cover letter writer who crafts compelling, highly personalized cover letters.
 
 TONE INSTRUCTIONS: ${TONE_INSTRUCTIONS[tone]}
 
@@ -72,8 +93,9 @@ CRITICAL RULES:
 - Keep to 3-4 tight paragraphs
 - Open with a compelling hook that connects the candidate to THIS specific company
 - Close with enthusiasm and a clear call to action
-- Do NOT include date, address headers, or sign-off — just the body paragraphs`),
-      new HumanMessage(`Write a cover letter using this information:
+- Do NOT include date, address headers, or sign-off — just the body paragraphs`
+
+    const userPrompt = `Write a cover letter using this information:
 
 CANDIDATE PROFILE:
 Name: ${state.user_profile.full_name}
@@ -106,20 +128,45 @@ ${topMatches
 Bridge story to use:
 ${bridgeStories.slice(0, 1).map(b => `${b.experience}: ${b.narrative_angle}`).join('\n')}
 
-Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably written for ${state.company_research.company_name}.`),
-      ], {
-        metadata: {
-          run_name: 'letter-writing',
-          user_id: state.user_profile.id,
-          company: state.company_name,
-        },
-      })
-    }, { models: writerModels })
+Write 3-4 tight paragraphs. Make it compelling, specific, and unmistakably written for ${state.company_research.company_name}.`
 
-    const cover_letter = response.content as string
+    let cover_letter = ''
+    if (state.llm_provider === 'groq') {
+      const response = await chatWithGroq(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        900,
+        { models: groqWriterModels }
+      )
+      cover_letter = response.text
+    } else {
+      const response = await withAnthropicModelFallback(async model => {
+        const llm = new ChatAnthropic({
+          model,
+          maxTokens: 900,
+          anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+        })
+
+        return llm.invoke([
+          new SystemMessage(systemPrompt),
+          new HumanMessage(userPrompt),
+        ], {
+          metadata: {
+            run_name: 'letter-writing',
+            user_id: state.user_profile.id,
+            company: state.company_name,
+          },
+        })
+      }, { models: claudeWriterModels })
+
+      cover_letter = normalizeResponseText(response.content)
+    }
+
     return { cover_letter }
   } catch (error) {
-    if (isAnthropicRateLimitError(error)) {
+    if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
       return {
         error: 'Cover letter generation is temporarily rate-limited. Please retry in about 60 seconds.',
       }

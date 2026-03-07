@@ -1,6 +1,6 @@
 # CoverMe — AI-Powered Cover Letter Generator
 
-Generate highly personalized cover letters using a 4-agent AI pipeline: company research → skill matching → letter writing.
+Generate highly personalized cover letters using a 4-agent AI pipeline: company research → skill matching → letter writing. Users can switch providers (`Claude` or `Groq`) from the UI.
 
 ## Tech Stack
 
@@ -8,7 +8,8 @@ Generate highly personalized cover letters using a 4-agent AI pipeline: company 
 - **Tailwind CSS** + **shadcn/ui**
 - **Supabase** (Auth + PostgreSQL + Storage)
 - **LangGraph** (multi-agent orchestration)
-- **Claude API** (`claude-sonnet-4-6-20250514`) with web search
+- **Claude API** / **Groq API** (provider switch)
+- **Tavily API** (optional, for fresher Groq research context)
 
 ## Setup
 
@@ -28,6 +29,12 @@ Required:
 
 Optional (for tracing):
 - `LANGCHAIN_API_KEY` — from smith.langchain.com
+
+Optional (for provider routing and tuning):
+- `LLM_PROVIDER` — default provider (`claude` or `groq`)
+- `GROQ_API_KEY` — required when selecting Groq
+- `TAVILY_API_KEY` — optional, improves Groq research freshness
+- `ANTHROPIC_*_MODEL` / `GROQ_*_MODEL` — optional per-step model overrides
 
 ### 2. Database Setup
 
@@ -65,7 +72,8 @@ npm run dev
 User Input (company name)
        ↓
 Agent 2: Company Researcher
-  - Uses Claude web_search tool
+  - Claude: Anthropic web_search tool
+  - Groq: Tavily search context + Groq synthesis
   - Returns: mission, culture, news, tech stack, growth areas
        ↓
 Agent 3: Skill Matcher

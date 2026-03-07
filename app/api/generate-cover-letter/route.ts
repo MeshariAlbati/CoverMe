@@ -3,6 +3,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
 import type { Profile } from '@/types'
+import { resolveLlmProvider } from '@/lib/llm/provider'
 
 // Simple in-memory rate limiting (per user, 10 per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const companyName = typeof body?.company_name === 'string' ? body.company_name : ''
+  const llmProvider = resolveLlmProvider(body?.provider)
   const regenerate_id = typeof body?.regenerate_id === 'string' ? body.regenerate_id : undefined
   const normalizedCompanyName = companyName.trim()
 
@@ -152,6 +154,7 @@ export async function POST(req: NextRequest) {
       sendEvent(controller, 'progress', { step: 'researching', message: `Researching ${normalizedCompanyName}...` })
 
       const initialState = {
+        llm_provider: llmProvider,
         user_profile: profile as Profile,
         company_name: normalizedCompanyName,
         company_research: cachedResearch,
@@ -169,7 +172,7 @@ export async function POST(req: NextRequest) {
         streamMode: 'updates',
         configurable: {
           run_name: 'cover-letter-generation',
-          metadata: { user_id: user.id, company: normalizedCompanyName },
+          metadata: { user_id: user.id, company: normalizedCompanyName, provider: llmProvider },
         },
       })
 

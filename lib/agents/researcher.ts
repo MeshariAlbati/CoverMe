@@ -8,6 +8,12 @@ import {
   isAnthropicRateLimitError,
   withAnthropicModelFallback,
 } from '@/lib/anthropic-model'
+import {
+  chatWithGroq,
+  getGroqStageModels,
+  isGroqRateLimitError,
+} from '@/lib/llm/groq'
+import { getTavilyCompanyContext } from '@/lib/llm/tavily'
 
 const companyResearchSchema = z.object({
   company_name: z.string(),
@@ -27,30 +33,8 @@ function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 }
 
-export async function researchCompanyNode(
-  state: CoverLetterState
-): Promise<Partial<CoverLetterState>> {
-  if (state.error) {
-    return {}
-  }
-
-  if (state.company_research) {
-    return { company_research: state.company_research }
-  }
-
-  try {
-    const anthropic = getAnthropic()
-    const researchModels = getStageAnthropicModels('ANTHROPIC_RESEARCH_MODEL', 'ANTHROPIC_RESEARCH_MODELS')
-    const response = await withAnthropicModelFallback(
-      model =>
-        anthropic.messages.create({
-          model,
-          max_tokens: 2000,
-          tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
-          messages: [
-            {
-              role: 'user',
-              content: `You are a company research specialist. Research "${state.company_name}" thoroughly and return ONLY a valid JSON object (no markdown, no explanation).
+function getResearchPrompt(companyName: string, externalContext = ''): string {
+  return `You are a company research specialist. Research "${companyName}" thoroughly and return ONLY a valid JSON object (no markdown, no explanation).
 
 Search for and include:
 1. Company mission and values
@@ -76,58 +60,105 @@ Return this exact JSON structure:
   "challenges": [""],
   "key_leadership": [{"name": "", "role": ""}],
   "what_they_look_for": ""
-}`,
-            },
-          ],
-          metadata: {
-            user_id: state.user_profile.id,
-          },
-        }) as Promise<Message>
-    , { models: researchModels })
+}
 
-    // Find the final text response
+If external search context is included below, prioritize it and cite only facts present there.
+${externalContext ? `\nEXTERNAL SEARCH CONTEXT:\n${externalContext}` : '\nNo external context was provided. Use your best available knowledge and keep uncertain claims conservative.'}`
+}
+
+export async function researchCompanyNode(
+  state: CoverLetterState
+): Promise<Partial<CoverLetterState>> {
+  if (state.error) {
+    return {}
+  }
+
+  if (state.company_research) {
+    return { company_research: state.company_research }
+  }
+
+  try {
     let researchText = ''
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        researchText = block.text
-      }
-    }
-
-    // Handle tool_use blocks by getting final answer via follow-up if needed
-    const toolUseBlocks = response.content.filter(b => b.type === 'tool_use')
-    if (toolUseBlocks.length > 0 && !researchText) {
-      const messages: Anthropic.MessageParam[] = [
-        {
-          role: 'user',
-          content: `Research "${state.company_name}" and return ONLY a valid JSON with company info.`,
-        },
-        {
-          role: 'assistant',
-          content: response.content,
-        },
-        {
-          role: 'user',
-          content: toolUseBlocks.map(block => ({
-            type: 'tool_result' as const,
-            tool_use_id: (block as Anthropic.ToolUseBlock).id,
-            content: 'Search completed. Now synthesize the information into the required JSON format.',
-          })),
-        },
-      ]
-
-      const followUp = await withAnthropicModelFallback(
+    if (state.llm_provider === 'groq') {
+      const groqResearchModels = getGroqStageModels('GROQ_RESEARCH_MODEL', 'GROQ_RESEARCH_MODELS')
+      const externalContext = await getTavilyCompanyContext(state.company_name)
+      const { text } = await chatWithGroq(
+        [
+          {
+            role: 'system',
+            content: 'You are a company research specialist. Return ONLY valid JSON.',
+          },
+          {
+            role: 'user',
+            content: getResearchPrompt(state.company_name, externalContext),
+          },
+        ],
+        1700,
+        { models: groqResearchModels }
+      )
+      researchText = text
+    } else {
+      const anthropic = getAnthropic()
+      const researchModels = getStageAnthropicModels('ANTHROPIC_RESEARCH_MODEL', 'ANTHROPIC_RESEARCH_MODELS')
+      const response = await withAnthropicModelFallback(
         model =>
-          getAnthropic().messages.create({
+          anthropic.messages.create({
             model,
-            max_tokens: 1600,
-            messages,
+            max_tokens: 2000,
+            tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+            messages: [
+              {
+                role: 'user',
+                content: getResearchPrompt(state.company_name),
+              },
+            ],
+            metadata: {
+              user_id: state.user_profile.id,
+            },
           }) as Promise<Message>
       , { models: researchModels })
 
-      for (const block of followUp.content) {
+      for (const block of response.content) {
         if (block.type === 'text') {
           researchText = block.text
-          break
+        }
+      }
+
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use')
+      if (toolUseBlocks.length > 0 && !researchText) {
+        const messages: Anthropic.MessageParam[] = [
+          {
+            role: 'user',
+            content: `Research "${state.company_name}" and return ONLY a valid JSON with company info.`,
+          },
+          {
+            role: 'assistant',
+            content: response.content,
+          },
+          {
+            role: 'user',
+            content: toolUseBlocks.map(block => ({
+              type: 'tool_result' as const,
+              tool_use_id: (block as Anthropic.ToolUseBlock).id,
+              content: 'Search completed. Now synthesize the information into the required JSON format.',
+            })),
+          },
+        ]
+
+        const followUp = await withAnthropicModelFallback(
+          model =>
+            getAnthropic().messages.create({
+              model,
+              max_tokens: 1600,
+              messages,
+            }) as Promise<Message>
+        , { models: researchModels })
+
+        for (const block of followUp.content) {
+          if (block.type === 'text') {
+            researchText = block.text
+            break
+          }
         }
       }
     }
@@ -141,7 +172,7 @@ Return this exact JSON structure:
 
     return { company_research }
   } catch (error) {
-    if (isAnthropicRateLimitError(error)) {
+    if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
       return {
         error: `Research is temporarily rate-limited for ${state.company_name}. Please retry in about 60 seconds.`,
       }

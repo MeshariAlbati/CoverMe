@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm, useFieldArray } from 'react-hook-form'
+import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import {
   Upload, Loader2, Plus, X, CheckCircle2, Save
 } from 'lucide-react'
-import type { Profile } from '@/types'
+import type { LLMProvider, Profile } from '@/types'
 import AppNavbar from '@/components/layout/AppNavbar'
+import ProviderPicker from '@/components/ui/provider-picker'
 
 const profileSchema = z.object({
   full_name: z.string().min(1, 'Name is required'),
@@ -49,6 +51,8 @@ interface Props {
   userId: string
   userEmail: string
 }
+
+const CV_PROVIDER_STORAGE_KEY = 'coverme.cv-provider'
 
 // Shared input styles
 function DarkInput({ error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { error?: string }) {
@@ -125,6 +129,7 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 
 export default function ProfileForm({ initialProfile, userId, userEmail }: Props) {
   const router = useRouter()
+  const [cvProvider, setCvProvider] = useState<LLMProvider>('claude')
   const [cvUploading, setCvUploading] = useState(false)
   const [cvFileName, setCvFileName] = useState<string | null>(null)
   const [rawCvText, setRawCvText] = useState<string>(initialProfile?.raw_cv_text || '')
@@ -138,9 +143,8 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<ProfileFormData>({
-    resolver: zodResolver(profileSchema) as any,
+    resolver: zodResolver(profileSchema) as Resolver<ProfileFormData>,
     defaultValues: {
       full_name: initialProfile?.full_name || '',
       email: initialProfile?.email || userEmail,
@@ -172,6 +176,17 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
   const preferred_tone = watch('preferred_tone')
   const career_intent = watch('career_intent')
 
+  useEffect(() => {
+    const stored = window.localStorage.getItem(CV_PROVIDER_STORAGE_KEY)
+    if (stored === 'claude' || stored === 'groq') {
+      setCvProvider(stored)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(CV_PROVIDER_STORAGE_KEY, cvProvider)
+  }, [cvProvider])
+
   const handleFileUpload = useCallback(async (file: File) => {
     if (!file || file.type !== 'application/pdf') {
       alert('Please upload a PDF file')
@@ -196,6 +211,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
 
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('provider', cvProvider)
       const response = await fetch('/api/extract-cv', {
         method: 'POST',
         body: formData,
@@ -227,7 +243,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
     } finally {
       setCvUploading(false)
     }
-  }, [userId, setValue])
+  }, [cvProvider, userId, setValue])
 
   function addSkill() {
     const trimmed = skillInput.trim()
@@ -305,6 +321,17 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
 
             {/* CV Upload */}
             <SectionCard title="Upload your CV" description="PDF only — we'll auto-fill everything below">
+              <div className="mb-4 flex items-center gap-3">
+                <label className="text-[12px] font-mono tracking-wider uppercase" style={{ color: '#555559' }}>
+                  AI Provider
+                </label>
+                <ProviderPicker
+                  value={cvProvider}
+                  onChange={setCvProvider}
+                  disabled={cvUploading}
+                  allowClaude
+                />
+              </div>
               <div
                 className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all duration-200"
                 style={{
@@ -610,7 +637,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
                 </div>
 
                 <div>
-                  <FieldLabel required>What's your proudest professional achievement?</FieldLabel>
+                  <FieldLabel required>What&apos;s your proudest professional achievement?</FieldLabel>
                   <DarkTextarea
                     {...register('proudest_achievement')}
                     placeholder="E.g., I led a 3-person team to rebuild our checkout flow, cutting abandonment by 40% and adding $2M in annual revenue."

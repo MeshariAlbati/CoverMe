@@ -8,6 +8,11 @@ import {
   isAnthropicRateLimitError,
   withAnthropicModelFallback,
 } from '@/lib/anthropic-model'
+import {
+  chatWithGroq,
+  getGroqStageModels,
+  isGroqRateLimitError,
+} from '@/lib/llm/groq'
 
 const skillMatchSchema = z.object({
   user_skill_or_experience: z.string(),
@@ -39,6 +44,28 @@ function trimText(value: unknown, max = 280): string {
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
 }
 
+function normalizeResponseText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map(block => {
+        if (!block || typeof block !== 'object') return ''
+        if ('type' in block && (block as { type?: string }).type === 'text' && 'text' in block) {
+          const text = (block as { text?: unknown }).text
+          return typeof text === 'string' ? text : ''
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return ''
+}
+
 export async function matchSkillsNode(
   state: CoverLetterState
 ): Promise<Partial<CoverLetterState>> {
@@ -47,7 +74,8 @@ export async function matchSkillsNode(
   }
 
   try {
-    const matcherModels = getStageAnthropicModels('ANTHROPIC_MATCHER_MODEL', 'ANTHROPIC_MATCHER_MODELS')
+    const claudeMatcherModels = getStageAnthropicModels('ANTHROPIC_MATCHER_MODEL', 'ANTHROPIC_MATCHER_MODELS')
+    const groqMatcherModels = getGroqStageModels('GROQ_MATCHER_MODEL', 'GROQ_MATCHER_MODELS')
 
     const compactProfile = {
       job_title: state.user_profile.job_title,
@@ -85,28 +113,44 @@ export async function matchSkillsNode(
 
     const prompt = `CANDIDATE PROFILE:\n${profileSummary}\n\nCOMPANY RESEARCH:\n${companyData}\n\nAnalyze which of the candidate's skills, experiences, and achievements are most relevant to this company.\nConsider their career_intent (${state.user_profile.career_intent}) when framing the narrative.\n\nReturn this exact JSON structure with no markdown or explanation:\n{\n  "top_matches": [\n    {\n      "user_skill_or_experience": "",\n      "company_need_it_addresses": "",\n      "relevance": "high",\n      "suggested_framing": ""\n    }\n  ],\n  "bridge_stories": [\n    {\n      "experience": "",\n      "connection_to_company": "",\n      "narrative_angle": ""\n    }\n  ],\n  "gaps_to_address": [""],\n  "recommended_narrative_arc": "",\n  "key_value_proposition": ""\n}\n\nInclude 3-5 top_matches ranked by relevance (high/medium/low).\nInclude 1-2 bridge_stories connecting the candidate to the company even if not obvious.`
 
-    const response = await withAnthropicModelFallback(async model => {
-      const llm = new ChatAnthropic({
-        model,
-        maxTokens: 1400,
-        anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
-      })
+    const systemPrompt =
+      'You are an expert career strategist. Analyze the alignment between a candidate profile and a company. Return ONLY valid JSON with no markdown or explanation.'
 
-      return llm.invoke([
-        new SystemMessage(
-          'You are an expert career strategist. Analyze the alignment between a candidate profile and a company. Return ONLY valid JSON with no markdown or explanation.'
-        ),
-        new HumanMessage(prompt),
-      ], {
-        metadata: {
-          run_name: 'skill-matching',
-          user_id: state.user_profile.id,
-          company: state.company_name,
-        },
-      })
-    }, { models: matcherModels })
+    let rawText = ''
+    if (state.llm_provider === 'groq') {
+      const { text } = await chatWithGroq(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        1200,
+        { models: groqMatcherModels }
+      )
+      rawText = text
+    } else {
+      const response = await withAnthropicModelFallback(async model => {
+        const llm = new ChatAnthropic({
+          model,
+          maxTokens: 1400,
+          anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+        })
 
-    const text = (response.content as string).replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
+        return llm.invoke([
+          new SystemMessage(systemPrompt),
+          new HumanMessage(prompt),
+        ], {
+          metadata: {
+            run_name: 'skill-matching',
+            user_id: state.user_profile.id,
+            company: state.company_name,
+          },
+        })
+      }, { models: claudeMatcherModels })
+
+      rawText = normalizeResponseText(response.content)
+    }
+
+    const text = rawText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim()
     const parsed = skillMatchesSchema.safeParse(JSON.parse(text))
     if (!parsed.success) {
       return { error: 'Skill matching output had an invalid format.' }
@@ -114,7 +158,7 @@ export async function matchSkillsNode(
     const skill_matches: SkillMatches = parsed.data
     return { skill_matches }
   } catch (error) {
-    if (isAnthropicRateLimitError(error)) {
+    if (isAnthropicRateLimitError(error) || isGroqRateLimitError(error)) {
       return {
         error: 'Skill matching is temporarily rate-limited. Please retry in about 60 seconds.',
       }

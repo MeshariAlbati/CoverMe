@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -8,13 +8,16 @@ import {
   FileText, User, AlertCircle, CheckCircle2
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
-import type { CoverLetter } from '@/types'
+import type { CoverLetter, LLMProvider } from '@/types'
 import { consumeSSE } from '@/lib/sse-client'
+import ProviderPicker from '@/components/ui/provider-picker'
 
 interface Props {
   profile: { full_name: string; job_title: string; cv_url: string | null } | null
   initialCoverLetters: CoverLetter[]
 }
+
+const GENERATION_PROVIDER_STORAGE_KEY = 'coverme.generation-provider'
 
 function readStringField(data: unknown, key: string): string | null {
   if (!data || typeof data !== 'object') return null
@@ -111,6 +114,7 @@ function PipelineStep({ label, description, state }: {
 export default function DashboardClient({ profile, initialCoverLetters }: Props) {
   const router = useRouter()
   const [companyName, setCompanyName] = useState('')
+  const [llmProvider, setLlmProvider] = useState<LLMProvider>('groq')
   const [generating, setGenerating] = useState(false)
   const [generatingMessage, setGeneratingMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -120,6 +124,19 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
 
   const profileIncomplete = !profile?.full_name || !profile?.job_title
   const steps = generating ? getStepStates(generatingMessage) : null
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(GENERATION_PROVIDER_STORAGE_KEY)
+    if (stored === 'groq') {
+      setLlmProvider('groq')
+    } else if (stored === 'claude') {
+      setLlmProvider('groq')
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(GENERATION_PROVIDER_STORAGE_KEY, llmProvider)
+  }, [llmProvider])
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
@@ -135,7 +152,7 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
       const response = await fetch('/api/generate-cover-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName }),
+        body: JSON.stringify({ company_name: companyName, provider: llmProvider }),
         signal: abortRef.current.signal,
       })
 
@@ -248,6 +265,18 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
             <p className="text-[12px] font-mono tracking-wider uppercase mb-4" style={{ color: '#555559' }}>
               New cover letter
             </p>
+            <div className="mb-4 flex items-center gap-3">
+              <label className="text-[12px] font-mono tracking-wider uppercase" style={{ color: '#555559' }}>
+                AI Provider
+              </label>
+              <ProviderPicker
+                value={llmProvider}
+                onChange={setLlmProvider}
+                disabled={generating}
+                allowClaude={false}
+                lockedClaudeMessage="Sorry but it cost a lot ): "
+              />
+            </div>
             <form onSubmit={handleGenerate} className="flex gap-3">
               <input
                 ref={inputRef}

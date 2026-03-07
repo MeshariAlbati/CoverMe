@@ -7,11 +7,11 @@ const TYPEWRITER_TEXT = 'Your next cover letter writes itself.'
 const MOCK_LETTER_LINES = [
   'Dear Hiring Team at Anthropic,',
   '',
-  "I'm writing to express my interest in the Senior Product Engineer role. Having followed Anthropic's work on Constitutional AI since its inception, I believe the alignment-first approach to model development represents the most credible path toward beneficial AGI — and I want to be part of building it.",
+  "I'm Meshari, an AI Engineer at Etlaq and Vice President of the CCSIT Club. Having followed Anthropic's work on Constitutional AI since its inception, I believe the alignment-first approach to model development represents the most credible path toward beneficial AGI — and I want to be part of building it.",
   '',
-  "In my current role at Stripe, I led the redesign of our risk scoring pipeline, reducing false positives by 34% while maintaining sub-50ms p99 latency. The work required the same precision and rigor that your team brings to capability evaluations — and it taught me to hold correctness and speed as complementary, not competing, values.",
+  "At Etlaq, I design and ship AI-powered products end to end — from model integration to user-facing interfaces. Leading technical initiatives at CCSIT has sharpened my ability to align engineers around a shared vision, the same quality I admire in how your teams approach capability research.",
   '',
-  'What draws me specifically to this team is your commitment to publishing your research openly. I\'d love to contribute to work that is honest about what it doesn\'t know.',
+  "What draws me specifically to Anthropic is your commitment to publishing what you learn openly. I'd love to contribute to work that is honest about what it doesn't know.",
 ]
 
 function TypewriterHero() {
@@ -32,7 +32,7 @@ function TypewriterHero() {
         setTimeout(() => setShowUnderline(true), 150)
         setTimeout(() => {
           MOCK_LETTER_LINES.forEach((_, i) => {
-            setTimeout(() => setLetterLines(prev => [...prev, i]), i * 120)
+            setTimeout(() => setLetterLines(prev => [...prev, i]), i * 180)
           })
         }, 400)
       }
@@ -140,7 +140,7 @@ function TypewriterHero() {
               ].map((step, i) => (
                 <div key={i} className="flex items-center gap-2.5">
                   <div
-                    className="w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-all duration-300"
+                    className="w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-all duration-500"
                     style={{
                       borderColor: step.done ? '#7EC699' : step.active ? '#E5C07B' : '#333338',
                       backgroundColor: step.done ? 'rgba(126,198,153,0.1)' : step.active ? 'rgba(229,192,123,0.08)' : 'transparent',
@@ -156,7 +156,7 @@ function TypewriterHero() {
                     )}
                   </div>
                   <span
-                    className="font-mono text-[11px] transition-colors duration-300"
+                    className="font-mono text-[11px] transition-colors duration-500"
                     style={{
                       color: step.done ? '#7EC699' : step.active ? '#E5C07B' : '#555559',
                     }}
@@ -174,12 +174,14 @@ function TypewriterHero() {
               {MOCK_LETTER_LINES.map((line, i) => (
                 <p
                   key={i}
-                  className="font-serif text-[13px] leading-[1.7] transition-all duration-300"
+                  className="font-serif text-[13px] leading-[1.7]"
                   style={{
                     color: line === '' ? 'transparent' : '#8A8A8E',
                     opacity: letterLines.includes(i) ? 1 : 0,
-                    transform: letterLines.includes(i) ? 'translateY(0)' : 'translateY(4px)',
+                    transform: letterLines.includes(i) ? 'translateY(0)' : 'translateY(10px)',
+                    filter: letterLines.includes(i) ? 'blur(0px)' : 'blur(3px)',
                     minHeight: line === '' ? '8px' : 'auto',
+                    transition: 'opacity 700ms cubic-bezier(0.16, 1, 0.3, 1), transform 700ms cubic-bezier(0.16, 1, 0.3, 1), filter 600ms cubic-bezier(0.16, 1, 0.3, 1)',
                   }}
                 >
                   {line || '\u00A0'}
@@ -372,8 +374,8 @@ export default function LandingPage() {
       >
         <div className="max-w-[1100px] mx-auto px-6 sm:px-12 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-baseline gap-[2px]">
-            <span className="font-serif text-[20px]" style={{ color: '#EDEDEF' }}>Cover</span>
-            <span className="font-serif text-[20px]" style={{ color: '#E5C07B' }}>Me</span>
+            <span className="font-serif text-[26px]" style={{ color: '#EDEDEF' }}>Cover</span>
+            <span className="font-serif text-[26px]" style={{ color: '#E5C07B' }}>Me</span>
           </Link>
           <div className="flex items-center gap-6">
             <Link

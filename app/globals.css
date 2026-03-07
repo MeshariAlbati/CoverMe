@@ -3,50 +3,66 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --color-background: #0A0A0B;
-  --color-foreground: #EDEDEF;
-  --color-card: #111113;
-  --color-card-foreground: #EDEDEF;
-  --color-popover: #111113;
-  --color-popover-foreground: #EDEDEF;
-  --color-primary: #E5C07B;
-  --color-primary-foreground: #0A0A0B;
-  --color-secondary: #1A1A1F;
-  --color-secondary-foreground: #EDEDEF;
-  --color-muted: #1A1A1F;
-  --color-muted-foreground: #8A8A8E;
-  --color-accent: #1A1A1F;
-  --color-accent-foreground: #EDEDEF;
-  --color-destructive: #E06C75;
-  --color-destructive-foreground: #EDEDEF;
-  --color-border: #222228;
-  --color-input: #222228;
-  --color-ring: #E5C07B;
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
-  --radius-xl: 8px;
-  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "Courier New", monospace;
-  --font-serif: var(--font-instrument-serif), Georgia, serif;
+:root {
+  --background: 240 6% 4%;
+  --foreground: 240 7% 93%;
+  --card: 240 6% 7%;
+  --card-foreground: 240 7% 93%;
+  --popover: 240 6% 7%;
+  --popover-foreground: 240 7% 93%;
+  --primary: 40 68% 68%;
+  --primary-foreground: 240 6% 4%;
+  --secondary: 240 8% 11%;
+  --secondary-foreground: 240 7% 93%;
+  --muted: 240 8% 11%;
+  --muted-foreground: 240 4% 55%;
+  --accent: 240 8% 11%;
+  --accent-foreground: 240 7% 93%;
+  --destructive: 356 68% 57%;
+  --destructive-foreground: 240 7% 93%;
+  --border: 240 6% 14%;
+  --input: 240 6% 14%;
+  --ring: 40 68% 68%;
+  --radius: 0.5rem;
 }
 
-:root {
-  --accent-subtle: rgba(229, 192, 123, 0.08);
-  --accent-glow: rgba(229, 192, 123, 0.15);
-  --success: #7EC699;
-  --error: #E06C75;
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
 }
 
 * {
-  border-color: #222228;
+  border-color: hsl(var(--border));
 }
 
 body {
-  background-color: #0A0A0B;
-  color: #EDEDEF;
-  font-family: var(--font-inter), -apple-system, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: "Inter", -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -59,16 +75,6 @@ body {
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(12px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes slide-in-left {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes amber-pulse {
@@ -106,19 +112,9 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes draw-line {
-  from { height: 0; }
-  to { height: 100%; }
-}
-
 @keyframes tag-pop {
   0% { transform: scale(0.8); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes tag-shrink {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.8); opacity: 0; }
 }
 
 /* Utility classes */
@@ -173,25 +169,6 @@ body {
   width: 40%;
   background: linear-gradient(90deg, transparent, rgba(229, 192, 123, 0.3), transparent);
   animation: scan-line 2s linear infinite;
-}
-
-/* Active nav underline transition */
-.nav-link {
-  position: relative;
-}
-.nav-link::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 1px;
-  background-color: #E5C07B;
-  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.nav-link.active::after,
-.nav-link:hover::after {
-  width: 100%;
 }
 
 /* Focus rings */

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -9,12 +9,15 @@ import {
   ChevronDown, ChevronUp
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
-import type { CoverLetter, CompanyResearch, SkillMatches } from '@/types'
+import type { CoverLetter, CompanyResearch, LLMProvider, SkillMatches } from '@/types'
 import { consumeSSE } from '@/lib/sse-client'
+import ProviderPicker from '@/components/ui/provider-picker'
 
 interface Props {
   coverLetter: CoverLetter
 }
+
+const GENERATION_PROVIDER_STORAGE_KEY = 'coverme.generation-provider'
 
 function readStringField(data: unknown, key: string): string | null {
   if (!data || typeof data !== 'object') return null
@@ -76,6 +79,7 @@ function ActionButton({
 
 export default function GenerationView({ coverLetter }: Props) {
   const router = useRouter()
+  const [llmProvider, setLlmProvider] = useState<LLMProvider>('groq')
   const [letter, setLetter] = useState(coverLetter.cover_letter_text)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(coverLetter.cover_letter_text)
@@ -88,6 +92,19 @@ export default function GenerationView({ coverLetter }: Props) {
 
   const research = coverLetter.company_research as CompanyResearch | null
   const matches = coverLetter.matched_skills as SkillMatches | null
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(GENERATION_PROVIDER_STORAGE_KEY)
+    if (stored === 'groq') {
+      setLlmProvider('groq')
+    } else if (stored === 'claude') {
+      setLlmProvider('groq')
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(GENERATION_PROVIDER_STORAGE_KEY, llmProvider)
+  }, [llmProvider])
 
   async function handleCopy() {
     await navigator.clipboard.writeText(letter)
@@ -162,6 +179,7 @@ export default function GenerationView({ coverLetter }: Props) {
         body: JSON.stringify({
           company_name: coverLetter.company_name,
           regenerate_id: coverLetter.id,
+          provider: llmProvider,
         }),
       })
 
@@ -271,6 +289,13 @@ export default function GenerationView({ coverLetter }: Props) {
 
           {/* Action bar */}
           <div className="flex flex-wrap items-center gap-2 animate-fade-up" style={{ animationDelay: '0.05s', animationFillMode: 'both' }}>
+            <ProviderPicker
+              value={llmProvider}
+              onChange={setLlmProvider}
+              disabled={regenerating}
+              allowClaude={false}
+              lockedClaudeMessage="Sorry but it cost a lot ): "
+            />
             <ActionButton onClick={handleCopy}>
               <Copy className="w-3.5 h-3.5" />
               {copied ? 'Copied!' : 'Copy'}
