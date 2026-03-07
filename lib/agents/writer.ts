@@ -89,6 +89,39 @@ function buildCertificationProofPoints(state: CoverLetterState): string[] {
     .map(cert => `Certification: ${cert}`)
 }
 
+function buildManualProjectProofPoints(state: CoverLetterState): string[] {
+  const manualProjects = Array.isArray(state.user_profile.manual_projects)
+    ? state.user_profile.manual_projects
+    : []
+
+  return manualProjects
+    .map(project => ({
+      name: trimText(project.name, 80),
+      description: trimText(project.description, 160),
+      url: trimText(project.url, 80),
+    }))
+    .filter(project => project.name && project.description)
+    .slice(0, 4)
+    .map(project => {
+      const base = `Manual project: ${project.name} | ${project.description}`
+      return project.url ? `${base} | URL: ${project.url}` : base
+    })
+}
+
+function buildProjectHighlightProofPoints(state: CoverLetterState): string[] {
+  const projects = Array.isArray(state.user_profile.project_highlights_summary)
+    ? state.user_profile.project_highlights_summary
+    : Array.isArray(state.user_profile.github_projects_summary)
+      ? state.user_profile.github_projects_summary
+    : []
+
+  return projects
+    .map(project => trimText(project, 180))
+    .filter(Boolean)
+    .slice(0, 4)
+    .map(project => `Project: ${project}`)
+}
+
 export async function writeLetterNode(
   state: CoverLetterState
 ): Promise<Partial<CoverLetterState>> {
@@ -114,9 +147,24 @@ export async function writeLetterNode(
     : []
   const experienceProofPoints = buildProofPoints(state)
   const certificationProofPoints = buildCertificationProofPoints(state)
-  const proofPoints = [...experienceProofPoints, ...certificationProofPoints].slice(0, 6)
+  const manualProjectProofPoints = buildManualProjectProofPoints(state)
+  const projectHighlightProofPoints = buildProjectHighlightProofPoints(state)
+  const proofPoints = [
+    ...experienceProofPoints,
+    ...certificationProofPoints,
+    ...manualProjectProofPoints,
+    ...projectHighlightProofPoints,
+  ].slice(0, 8)
   const certifications = Array.isArray(state.user_profile.certifications)
     ? state.user_profile.certifications
+    : []
+  const manualProjects = Array.isArray(state.user_profile.manual_projects)
+    ? state.user_profile.manual_projects
+    : []
+  const projectHighlights = Array.isArray(state.user_profile.project_highlights_summary)
+    ? state.user_profile.project_highlights_summary
+    : Array.isArray(state.user_profile.github_projects_summary)
+      ? state.user_profile.github_projects_summary
     : []
 
   try {
@@ -138,11 +186,12 @@ CRITICAL RULES:
   3) Exactly how the candidate will help this team
 - Use at least 2 concrete proof points from the candidate profile
 - If relevant certifications exist, use at least one as supporting evidence
+- If relevant projects are provided (GitHub or manual), use one concrete project detail when it strengthens fit
 - Avoid repetition and generic claims
 - NEVER use these phrases:
   - "I am writing to express my interest"
   - "I believe I would be a great fit"
-- "I am passionate about"
+  - "I am passionate about"
   - "I'm excited"
   - "I am excited"
 - Use specific, outcome-oriented language instead of praise-heavy language
@@ -158,6 +207,11 @@ Career Goal: ${state.user_profile.career_intent}
 What makes them unique: ${trimText(state.user_profile.unique_value, 220)}
 Proudest achievement: ${trimText(state.user_profile.proudest_achievement, 240)}
 Certifications: ${certifications.length > 0 ? certifications.join(', ') : 'None provided'}
+GitHub profile: ${state.user_profile.github_url || 'None provided'}
+Manual projects:
+${manualProjects.length > 0 ? manualProjects.map(project => `- ${trimText(project.name, 80)}: ${trimText(project.description, 180)}`).join('\n') : '- None provided'}
+Project highlights (GitHub + manual):
+${projectHighlights.length > 0 ? projectHighlights.map(project => `- ${project}`).join('\n') : '- None provided'}
 ${state.user_profile.things_to_emphasize ? `Emphasize: ${trimText(state.user_profile.things_to_emphasize, 220)}` : ''}
 ${state.user_profile.things_to_downplay ? `Downplay: ${trimText(state.user_profile.things_to_downplay, 220)}` : ''}
 

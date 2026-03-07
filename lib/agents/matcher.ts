@@ -83,6 +83,17 @@ export async function matchSkillsNode(
       job_title: state.user_profile.job_title,
       years_of_experience: state.user_profile.years_of_experience,
       skills: (state.user_profile.skills || []).slice(0, 25),
+      github_url: state.user_profile.github_url,
+      project_highlights: (
+        state.user_profile.project_highlights_summary ||
+        state.user_profile.github_projects_summary ||
+        []
+      ).slice(0, 8),
+      manual_projects: (state.user_profile.manual_projects || []).slice(0, 5).map(project => ({
+        name: trimText(project.name, 80),
+        description: trimText(project.description, 200),
+        url: trimText(project.url, 120),
+      })),
       work_experience: (state.user_profile.work_experience || []).slice(0, 4).map(exp => ({
         title: exp.title,
         company: exp.company,

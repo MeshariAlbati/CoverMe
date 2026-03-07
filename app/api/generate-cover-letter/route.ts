@@ -4,12 +4,19 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
 import type { Profile } from '@/types'
 import { resolveLlmProvider } from '@/lib/llm/provider'
+import { getGithubProjectHighlights } from '@/lib/github-projects'
 import { logError, logInfo, logWarn, maskEmail, serializeError } from '@/lib/server-logger'
 
 // Simple in-memory rate limiting (per user, 10 per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 const DEFAULT_CLAUDE_COVER_LETTER_ALLOWED_EMAIL = 'meshari.albati@gmail.com'
+
+type ManualProjectShape = {
+  name: string
+  description: string
+  url?: string | null
+}
 
 function parseAllowedClaudeEmails(): string[] {
   const raw = process.env.CLAUDE_COVER_LETTER_ALLOWED_EMAILS || DEFAULT_CLAUDE_COVER_LETTER_ALLOWED_EMAIL
@@ -22,6 +29,45 @@ function parseAllowedClaudeEmails(): string[] {
 function canUseClaudeForCoverLetter(email?: string | null): boolean {
   if (!email) return false
   return parseAllowedClaudeEmails().includes(email.trim().toLowerCase())
+}
+
+function trimText(value: string, max = 160): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
+}
+
+function normalizeManualProjects(input: unknown): ManualProjectShape[] {
+  if (!Array.isArray(input)) return []
+
+  return input
+    .map((project): ManualProjectShape | null => {
+      if (!project || typeof project !== 'object') return null
+
+      const shape = project as { name?: unknown, description?: unknown, url?: unknown }
+      const name = typeof shape.name === 'string' ? shape.name.trim() : ''
+      const description = typeof shape.description === 'string' ? shape.description.trim() : ''
+      const url = typeof shape.url === 'string' ? shape.url.trim() : ''
+
+      if (!name || !description) return null
+
+      return {
+        name,
+        description,
+        url: url || null,
+      }
+    })
+    .filter((project): project is ManualProjectShape => Boolean(project))
+    .slice(0, 6)
+}
+
+function buildManualProjectHighlights(manualProjects: ManualProjectShape[]): string[] {
+  return manualProjects.map(project => {
+    const name = trimText(project.name, 80)
+    const description = trimText(project.description, 140)
+    const url = project.url ? trimText(project.url, 80) : ''
+    const base = `${name} | ${description}`
+    return url ? `${base} | URL: ${url}` : base
+  })
 }
 
 function checkRateLimit(userId: string): boolean {
@@ -160,6 +206,45 @@ export async function POST(req: NextRequest) {
         return
       }
 
+      const manualProjects = normalizeManualProjects(profile.manual_projects)
+      const manualProjectHighlights = buildManualProjectHighlights(manualProjects)
+      let githubProjectsSummary: string[] = []
+      if (typeof profile.github_url === 'string' && profile.github_url.trim()) {
+        const githubContext = await getGithubProjectHighlights(profile.github_url, {
+          requestId,
+          userId: user.id,
+        })
+
+        if (githubContext?.highlights?.length) {
+          githubProjectsSummary = githubContext.highlights
+          logInfo('cover_letter_github_projects_loaded', {
+            request_id: requestId,
+            user_id: user.id,
+            username: githubContext.username,
+            project_count: githubProjectsSummary.length,
+          })
+        } else {
+          logWarn('cover_letter_github_projects_unavailable', {
+            request_id: requestId,
+            user_id: user.id,
+            github_url: profile.github_url,
+          })
+        }
+      }
+
+      const projectHighlightsSummary = [
+        ...manualProjectHighlights,
+        ...githubProjectsSummary,
+      ].slice(0, 10)
+
+      if (manualProjects.length > 0) {
+        logInfo('cover_letter_manual_projects_loaded', {
+          request_id: requestId,
+          user_id: user.id,
+          project_count: manualProjects.length,
+        })
+      }
+
       // Check for cached company research (7-day TTL) — skip if regenerating fresh
       let cachedResearch = null
       if (!regenerate_id) {
@@ -222,7 +307,12 @@ export async function POST(req: NextRequest) {
 
       const initialState = {
         llm_provider: llmProvider,
-        user_profile: profile as Profile,
+        user_profile: {
+          ...(profile as Profile),
+          manual_projects: manualProjects,
+          github_projects_summary: githubProjectsSummary,
+          project_highlights_summary: projectHighlightsSummary,
+        } as Profile,
         company_name: normalizedCompanyName,
         company_research: cachedResearch,
         skill_matches: null,

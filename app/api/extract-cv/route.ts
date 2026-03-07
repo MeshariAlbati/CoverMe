@@ -29,6 +29,7 @@ Return this exact structure:
   "email": "",
   "phone": "",
   "linkedin_url": "",
+  "github_url": "",
   "location": "",
   "job_title": "",
   "years_of_experience": 0,

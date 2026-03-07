@@ -6,12 +6,14 @@ export interface Profile {
   email: string
   phone: string | null
   linkedin_url: string | null
+  github_url: string | null
   location: string | null
   job_title: string
   years_of_experience: number
   skills: string[]
   education: Education[]
   work_experience: WorkExperience[]
+  manual_projects: ManualProject[] | null
   certifications: string[] | null
   languages: string[] | null
   preferred_tone: 'formal' | 'conversational' | 'confident' | 'balanced'
@@ -22,6 +24,8 @@ export interface Profile {
   things_to_downplay: string | null
   cv_url: string | null
   raw_cv_text: string | null
+  github_projects_summary?: string[] | null
+  project_highlights_summary?: string[] | null
   created_at: string
   updated_at: string
 }
@@ -37,6 +41,12 @@ export interface WorkExperience {
   company: string
   duration: string
   highlights: string[]
+}
+
+export interface ManualProject {
+  name: string
+  description: string
+  url?: string | null
 }
 
 export interface CompanyResearch {

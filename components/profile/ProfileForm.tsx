@@ -19,6 +19,7 @@ const profileSchema = z.object({
   email: z.string().email('Valid email required'),
   phone: z.string().optional(),
   linkedin_url: z.string().optional(),
+  github_url: z.string().optional(),
   location: z.string().optional(),
   job_title: z.string().min(1, 'Job title is required'),
   years_of_experience: z.coerce.number().min(0).max(50),
@@ -34,6 +35,11 @@ const profileSchema = z.object({
     duration: z.string(),
     highlights: z.array(z.string()),
   })),
+  manual_projects: z.array(z.object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    url: z.string().optional(),
+  })).optional(),
   certifications: z.array(z.string()).optional(),
   languages: z.array(z.string()).optional(),
   preferred_tone: z.enum(['formal', 'conversational', 'confident', 'balanced']),
@@ -140,22 +146,30 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
   const [showOptional, setShowOptional] = useState(false)
   const [certInput, setCertInput] = useState('')
   const [langInput, setLangInput] = useState('')
+  const [githubImporting, setGithubImporting] = useState(false)
+  const [githubImportMessage, setGithubImportMessage] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<ProfileFormData>({
+  const { register, handleSubmit, watch, getValues, setValue, control, formState: { errors } } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema) as Resolver<ProfileFormData>,
     defaultValues: {
       full_name: initialProfile?.full_name || '',
       email: initialProfile?.email || userEmail,
       phone: initialProfile?.phone || '',
       linkedin_url: initialProfile?.linkedin_url || '',
+      github_url: initialProfile?.github_url || '',
       location: initialProfile?.location || '',
       job_title: initialProfile?.job_title || '',
       years_of_experience: initialProfile?.years_of_experience || 0,
       skills: initialProfile?.skills || [],
       education: initialProfile?.education?.length ? initialProfile.education : [{ degree: '', institution: '', year: '' }],
       work_experience: initialProfile?.work_experience?.length ? initialProfile.work_experience : [{ title: '', company: '', duration: '', highlights: [] }],
+      manual_projects: (initialProfile?.manual_projects || []).map(project => ({
+        name: project.name || '',
+        description: project.description || '',
+        url: project.url || '',
+      })),
       certifications: initialProfile?.certifications || [],
       languages: initialProfile?.languages || [],
       preferred_tone: initialProfile?.preferred_tone || 'balanced',
@@ -169,6 +183,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
 
   const { fields: eduFields, append: appendEdu, remove: removeEdu } = useFieldArray({ control, name: 'education' })
   const { fields: expFields, append: appendExp, remove: removeExp } = useFieldArray({ control, name: 'work_experience' })
+  const { fields: projectFields, append: appendProject, remove: removeProject, replace: replaceProjects } = useFieldArray({ control, name: 'manual_projects' })
 
   const skills = watch('skills')
   const certifications = watch('certifications') || []
@@ -229,6 +244,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
       if (extracted.email) setValue('email', extracted.email)
       if (extracted.phone) setValue('phone', extracted.phone)
       if (extracted.linkedin_url) setValue('linkedin_url', extracted.linkedin_url)
+      if (extracted.github_url) setValue('github_url', extracted.github_url)
       if (extracted.location) setValue('location', extracted.location)
       if (extracted.job_title) setValue('job_title', extracted.job_title)
       if (extracted.years_of_experience) setValue('years_of_experience', extracted.years_of_experience)
@@ -273,13 +289,98 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
     setLangInput('')
   }
 
+  async function importGithubProjects() {
+    const githubUrl = (getValues('github_url') || '').trim()
+    if (!githubUrl) {
+      setGithubImportMessage('Please add a GitHub profile URL first.')
+      return
+    }
+
+    setGithubImporting(true)
+    setGithubImportMessage(null)
+
+    try {
+      const response = await fetch('/api/github-projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ github_url: githubUrl }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Failed to fetch GitHub projects')
+      }
+
+      const payload = await response.json() as {
+        username: string
+        projects: Array<{
+          name: string
+          description: string
+          url?: string | null
+        }>
+      }
+
+      const imported = (payload.projects || [])
+        .map(project => ({
+          name: (project.name || '').trim(),
+          description: (project.description || '').trim(),
+          url: (project.url || '').trim(),
+        }))
+        .filter(project => project.name && project.description)
+
+      if (imported.length === 0) {
+        setGithubImportMessage('No usable projects were found on that profile.')
+        return
+      }
+
+      const existing = (getValues('manual_projects') || [])
+        .map(project => ({
+          name: (project?.name || '').trim(),
+          description: (project?.description || '').trim(),
+          url: (project?.url || '').trim(),
+        }))
+        .filter(project => project.name && project.description)
+
+      const seen = new Set<string>()
+      const merged = [...existing, ...imported].filter(project => {
+        const key = `${project.name.toLowerCase()}|${project.url.toLowerCase()}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+      replaceProjects(merged)
+      setGithubImportMessage(`Imported ${imported.length} projects from @${payload.username}.`)
+    } catch (error) {
+      setGithubImportMessage(error instanceof Error ? error.message : 'Failed to import projects')
+    } finally {
+      setGithubImporting(false)
+    }
+  }
+
   async function onSubmit(data: ProfileFormData) {
     setSaving(true)
     const supabase = createClient()
 
+    const manualProjects = (data.manual_projects || [])
+      .map(project => ({
+        name: (project.name || '').trim(),
+        description: (project.description || '').trim(),
+        url: (project.url || '').trim(),
+      }))
+      .filter(project => project.name.length > 0 && project.description.length > 0)
+      .map(project => ({
+        name: project.name,
+        description: project.description,
+        url: project.url || null,
+      }))
+
     const profileData = {
       id: userId,
       ...data,
+      manual_projects: manualProjects,
       cv_url: cvUrl,
       raw_cv_text: rawCvText,
       updated_at: new Date().toISOString(),
@@ -410,6 +511,117 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
                 <div>
                   <FieldLabel required>Years of Experience</FieldLabel>
                   <DarkInput type="number" min={0} max={50} {...register('years_of_experience')} className="w-24" />
+                </div>
+              </div>
+            </SectionCard>
+
+            {/* Projects */}
+            <SectionCard
+              title="Projects"
+              description="Share your GitHub profile and add manual projects to strengthen your cover letters."
+            >
+              <div className="grid grid-cols-1 gap-5">
+                <div>
+                  <FieldLabel>GitHub Profile URL</FieldLabel>
+                  <DarkInput {...register('github_url')} placeholder="github.com/janesmith" />
+                  <p className="text-[12px] mt-1" style={{ color: '#555559' }}>
+                    We read public repositories and use relevant projects in your letter.
+                  </p>
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={importGithubProjects}
+                      disabled={githubImporting}
+                      className="h-9 px-4 rounded border text-[13px] font-medium transition-all duration-200 flex items-center gap-2"
+                      style={{
+                        borderColor: '#E5C07B',
+                        color: '#E5C07B',
+                        opacity: githubImporting ? 0.7 : 1,
+                        cursor: githubImporting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {githubImporting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        'Import Projects'
+                      )}
+                    </button>
+                    {githubImportMessage && (
+                      <p className="text-[12px]" style={{ color: '#8A8A8E' }}>
+                        {githubImportMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+                <div>
+                  <FieldLabel>Manual Projects</FieldLabel>
+                  <p className="text-[12px] mb-3" style={{ color: '#555559' }}>
+                    Add important projects with description if they are missing from GitHub parsing.
+                  </p>
+
+                  <div className="space-y-3">
+                    {projectFields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className="p-4 rounded border relative"
+                        style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => removeProject(index)}
+                          className="absolute top-3 right-3 transition-colors"
+                          style={{ color: '#555559' }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+
+                        <div className="grid grid-cols-1 gap-3">
+                          <div>
+                            <FieldLabel>Project Name</FieldLabel>
+                            <DarkInput
+                              {...register(`manual_projects.${index}.name`)}
+                              placeholder="Distributed Payment Gateway"
+                            />
+                          </div>
+                          <div>
+                            <FieldLabel>Project Description</FieldLabel>
+                            <DarkTextarea
+                              {...register(`manual_projects.${index}.description`)}
+                              placeholder="Built a high-throughput payment service with retry logic and observability; reduced failed transactions by 22%."
+                              style={{ minHeight: '90px' }}
+                            />
+                          </div>
+                          <div>
+                            <FieldLabel>Project URL (Optional)</FieldLabel>
+                            <DarkInput
+                              {...register(`manual_projects.${index}.url`)}
+                              placeholder="https://github.com/username/project"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => appendProject({ name: '', description: '', url: '' })}
+                    className="mt-3 w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
+                    style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add manual project
+                  </button>
                 </div>
               </div>
             </SectionCard>
