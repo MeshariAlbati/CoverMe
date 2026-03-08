@@ -468,32 +468,26 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
               <button
                 type="submit"
                 disabled={generating || !companyName.trim() || profileIncomplete}
-                className="h-10 px-5 rounded text-[14px] font-medium transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap sm:w-auto w-full"
+                className="landing-cta-btn sm:w-auto w-full"
                 style={{
-                  backgroundColor: '#E5C07B',
-                  color: '#0A0A0B',
                   opacity: (generating || !companyName.trim() || profileIncomplete) ? 0.5 : 1,
                   cursor: (generating || !companyName.trim() || profileIncomplete) ? 'not-allowed' : 'pointer',
                 }}
-                onMouseEnter={(e) => {
-                  const el = e.currentTarget
-                  if (!el.disabled) el.style.backgroundColor = '#F0D08A'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#E5C07B'
-                }}
               >
-                {generating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating
-                  </>
-                ) : (
-                  <>
-                    Generate
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
+                <i className="landing-cta-shimmer" />
+                <span className="landing-cta-text">
+                  {generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating
+                    </>
+                  ) : (
+                    <>
+                      Generate
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </span>
               </button>
             </form>
 

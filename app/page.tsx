@@ -83,10 +83,10 @@ function TypewriterHero() {
           <p className="text-[17px] leading-[1.6] mb-10" style={{ color: '#8A8A8E' }}>
             Enter a company name. Get a letter that actually sounds like you.
           </p>
-          <Link href="/login" className="landing-cta-btn" aria-label="Sign in">
+          <Link href="/signup" className="landing-cta-btn" aria-label="Get started">
             <i className="landing-cta-shimmer" />
             <span className="landing-cta-text">
-              Sign in
+              Get started
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14m-7-7 7 7-7 7" />
               </svg>
@@ -312,21 +312,14 @@ function FinalCTA() {
         <p className="text-[15px] mb-6" style={{ color: '#8A8A8E' }}>
           Ready to stop writing cover letters from scratch?
         </p>
-        <Link href="/signup">
-          <button
-            className="h-[48px] px-8 rounded-lg font-medium text-[15px] transition-all duration-200"
-            style={{ backgroundColor: '#E5C07B', color: '#0A0A0B' }}
-            onMouseEnter={e => {
-              (e.target as HTMLElement).style.backgroundColor = '#F0D08A'
-              ;(e.target as HTMLElement).style.transform = 'translateY(-1px)'
-            }}
-            onMouseLeave={e => {
-              (e.target as HTMLElement).style.backgroundColor = '#E5C07B'
-              ;(e.target as HTMLElement).style.transform = 'translateY(0)'
-            }}
-          >
+        <Link href="/signup" className="landing-gradient-lift-btn" aria-label="Create your free account">
+          <span className="landing-gradient-lift-btn__inner">
             Create your free account
-          </button>
+            <svg className="landing-gradient-lift-btn__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </span>
         </Link>
       </div>
     </section>
@@ -347,26 +340,14 @@ export default function LandingPage() {
             <span className="font-serif text-[26px]" style={{ color: '#E5C07B' }}>Me</span>
           </Link>
           <div className="flex items-center gap-6">
-            <Link
-              href="/login"
-              className="text-[13px] font-medium transition-colors"
-              style={{ color: '#8A8A8E' }}
-            >
-              Sign in
-            </Link>
-            <Link href="/signup">
-              <button
-                className="h-8 px-4 rounded text-[13px] font-medium transition-all duration-200"
-                style={{ backgroundColor: '#E5C07B', color: '#0A0A0B' }}
-                onMouseEnter={e => {
-                  (e.target as HTMLElement).style.backgroundColor = '#F0D08A'
-                }}
-                onMouseLeave={e => {
-                  (e.target as HTMLElement).style.backgroundColor = '#E5C07B'
-                }}
-              >
-                Get started
-              </button>
+            <Link href="/login" className="landing-outline-cta-btn" aria-label="Sign in">
+              <span className="landing-outline-cta-text">
+                Sign in
+                <svg className="landing-outline-cta-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </span>
             </Link>
           </div>
         </div>
