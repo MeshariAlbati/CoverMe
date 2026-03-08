@@ -84,6 +84,8 @@ export interface SkillMatches {
   key_value_proposition: string
 }
 
+export type ApplicationStatus = 'generated' | 'applied' | 'interview' | 'accepted' | 'rejected'
+
 export interface CoverLetter {
   id: string
   user_id: string
@@ -92,6 +94,7 @@ export interface CoverLetter {
   matched_skills: SkillMatches | null
   cover_letter_text: string
   version: number
+  application_status: ApplicationStatus
   created_at: string
 }
 

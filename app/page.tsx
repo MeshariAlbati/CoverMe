@@ -83,46 +83,15 @@ function TypewriterHero() {
           <p className="text-[17px] leading-[1.6] mb-10" style={{ color: '#8A8A8E' }}>
             Enter a company name. Get a letter that actually sounds like you.
           </p>
-          <div className="flex items-center gap-4">
-            <Link href="/signup">
-              <button
-                className="h-[48px] px-8 rounded-lg font-medium text-[15px] transition-all duration-200 animate-amber-pulse"
-                style={{
-                  backgroundColor: '#E5C07B',
-                  color: '#0A0A0B',
-                }}
-                onMouseEnter={e => {
-                  (e.target as HTMLElement).style.backgroundColor = '#F0D08A'
-                  ;(e.target as HTMLElement).style.transform = 'translateY(-1px)'
-                }}
-                onMouseLeave={e => {
-                  (e.target as HTMLElement).style.backgroundColor = '#E5C07B'
-                  ;(e.target as HTMLElement).style.transform = 'translateY(0)'
-                }}
-                onMouseDown={e => {
-                  (e.target as HTMLElement).style.transform = 'translateY(1px)'
-                }}
-                onMouseUp={e => {
-                  (e.target as HTMLElement).style.transform = 'translateY(-1px)'
-                }}
-              >
-                Get Started
-              </button>
-            </Link>
-            <Link
-              href="/login"
-              className="text-[15px] font-medium transition-colors"
-              style={{ color: '#555559' }}
-              onMouseEnter={e => {
-                (e.target as HTMLElement).style.color = '#EDEDEF'
-              }}
-              onMouseLeave={e => {
-                (e.target as HTMLElement).style.color = '#555559'
-              }}
-            >
-              Sign in →
-            </Link>
-          </div>
+          <Link href="/login" className="landing-cta-btn" aria-label="Sign in">
+            <i className="landing-cta-shimmer" />
+            <span className="landing-cta-text">
+              Sign in
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14m-7-7 7 7-7 7" />
+              </svg>
+            </span>
+          </Link>
         </div>
 
         {/* Right: Mock generation card */}
