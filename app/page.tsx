@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import DarkVeil from '@/components/DarkVeil'
 
 const TYPEWRITER_TEXT = 'Your next cover letter writes itself.'
 const MOCK_LETTER_LINES = [
@@ -42,15 +43,33 @@ function TypewriterHero() {
 
   return (
     <section className="min-h-screen flex items-center px-6 sm:px-12 relative overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none opacity-80" aria-hidden="true">
+        <DarkVeil
+          hueShift={-150}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={0.5}
+          scanlineFrequency={0}
+          warpAmount={0}
+          resolutionScale={1}
+        />
+      </div>
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(180deg, rgba(10,10,11,0.32) 0%, rgba(10,10,11,0.58) 100%)',
+        }}
+      />
+
       {/* Ambient glow */}
       <div
-        className="absolute right-[10%] top-[20%] w-[500px] h-[500px] rounded-full pointer-events-none"
+        className="absolute right-[10%] top-[20%] w-[500px] h-[500px] rounded-full pointer-events-none z-10"
         style={{
           background: 'radial-gradient(circle, rgba(229,192,123,0.05) 0%, transparent 70%)',
         }}
       />
 
-      <div className="max-w-[1100px] mx-auto w-full grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-16 items-center py-24">
+      <div className="relative z-20 max-w-[1100px] mx-auto w-full grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-16 items-center py-24">
         {/* Left: Headline + CTA */}
         <div>
           <p className="font-mono text-xs tracking-[0.12em] uppercase text-muted-foreground mb-8">
