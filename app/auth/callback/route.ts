@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { logError, logInfo, logWarn, serializeError } from '@/lib/server-logger'
+import { getBaseUrlForRequest } from '@/lib/site-url'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  const origin = getBaseUrlForRequest(request)
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/dashboard'
 

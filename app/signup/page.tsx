@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
+import { getBaseUrlForClient } from '@/lib/site-url'
 import { Loader2, CheckCircle2 } from 'lucide-react'
 
 const signupSchema = z.object({
@@ -71,7 +72,7 @@ export default function SignupPage() {
       email: data.email,
       password: data.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${getBaseUrlForClient()}/auth/callback`,
       },
     })
     if (error) {

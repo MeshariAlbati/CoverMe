@@ -31,9 +31,11 @@ Required:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase project settings
 - `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings (keep secret)
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
+- `NEXT_PUBLIC_SITE_URL` — app base URL for auth email redirects (`http://localhost:3000` in dev, Railway URL in prod)
 
 Optional (for tracing):
 - `LANGCHAIN_API_KEY` — from smith.langchain.com
+- `SITE_URL` — optional server-side base URL override for callback redirects behind proxies
 
 Optional (for provider routing and tuning):
 - `LLM_PROVIDER` — default provider (`claude` or `groq`)
@@ -148,6 +150,7 @@ Set these in Railway project variables:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ANTHROPIC_API_KEY`
 - `LLM_PROVIDER` (`claude` or `groq`)
+- `NEXT_PUBLIC_SITE_URL` (your Railway URL, e.g. `https://your-app.up.railway.app`)
 
 If you use Groq, also set:
 - `GROQ_API_KEY`
@@ -162,6 +165,15 @@ Optional:
 ### 4. Redeploy
 
 Trigger a deploy after setting variables. Railway provides `PORT` automatically, and Next.js will bind to it in production.
+
+### 4.1 Supabase Auth Redirect URLs
+
+In Supabase Dashboard:
+
+- Auth > URL Configuration > Site URL: set to your production app URL
+- Auth > URL Configuration > Redirect URLs: add
+  - `https://your-app.up.railway.app/auth/callback`
+  - `http://localhost:3000/auth/callback` (for local development)
 
 ### 5. Service Domain Target Port
 
