@@ -57,8 +57,13 @@ function TypewriterHero() {
             AI Cover Letter Generator
           </p>
           <h1
-            className="font-serif text-[52px] sm:text-[64px] leading-[1.1] tracking-[-0.02em] mb-6"
-            style={{ color: '#EDEDEF' }}
+            className="font-serif text-[52px] sm:text-[64px] leading-[1.08] tracking-[-0.015em] mb-6 antialiased"
+            style={{
+              color: '#EDEDEF',
+              textRendering: 'optimizeLegibility',
+              WebkitFontSmoothing: 'antialiased',
+              MozOsxFontSmoothing: 'grayscale',
+            }}
           >
             {displayed}
             {!done && (
@@ -73,10 +78,13 @@ function TypewriterHero() {
           </h1>
           {showUnderline && (
             <div
-              className="h-px mb-8 origin-left"
+              className="h-[2px] max-w-[620px] mb-8 origin-left rounded-full"
               style={{
-                background: 'linear-gradient(90deg, #E5C07B, transparent)',
-                animation: 'amber-underline 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                background: 'linear-gradient(90deg, rgba(229, 192, 123, 0.95) 0%, rgba(229, 192, 123, 0.45) 58%, rgba(229, 192, 123, 0) 100%)',
+                boxShadow: '0 0 14px rgba(229, 192, 123, 0.22)',
+                animation: 'amber-underline 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                transformOrigin: 'left center',
+                willChange: 'transform, opacity, filter',
               }}
             />
           )}
