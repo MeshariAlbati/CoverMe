@@ -209,9 +209,71 @@ function HowItWorks() {
       desc: 'The writer agent synthesizes everything into a letter that references real company details and frames your specific experience toward their specific needs.',
     },
   ]
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const [revealedCount, setRevealedCount] = useState(0)
+
+  useEffect(() => {
+    const section = sectionRef.current
+    if (!section) {
+      return
+    }
+
+    let revealInterval: ReturnType<typeof setInterval> | undefined
+
+    const stopReveal = () => {
+      if (revealInterval) {
+        clearInterval(revealInterval)
+        revealInterval = undefined
+      }
+    }
+
+    const startReveal = () => {
+      if (revealInterval) {
+        return
+      }
+
+      setRevealedCount((current) => (current === 0 ? 1 : current))
+      revealInterval = setInterval(() => {
+        setRevealedCount((current) => {
+          if (current >= steps.length) {
+            stopReveal()
+            return current
+          }
+          return current + 1
+        })
+      }, 260)
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        if (!entry) {
+          return
+        }
+
+        if (entry.isIntersecting) {
+          startReveal()
+          return
+        }
+
+        stopReveal()
+        if (entry.boundingClientRect.top > 0) {
+          setRevealedCount(0)
+        }
+      },
+      { threshold: 0.35 }
+    )
+
+    observer.observe(section)
+
+    return () => {
+      observer.disconnect()
+      stopReveal()
+    }
+  }, [steps.length])
 
   return (
-    <section className="py-24 px-6 sm:px-12 border-t" style={{ borderColor: '#222228' }}>
+    <section ref={sectionRef} className="py-24 px-6 sm:px-12 border-t" style={{ borderColor: '#222228' }}>
       <div className="max-w-[1100px] mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-16 items-start">
           <div>
@@ -231,8 +293,19 @@ function HowItWorks() {
             />
 
             <div className="space-y-10">
-              {steps.map((step, i) => (
-                <div key={i} className="flex gap-6 relative animate-fade-up" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'both' }}>
+              {steps.map((step, i) => {
+                const isVisible = i < revealedCount
+
+                return (
+                  <div
+                    key={i}
+                    className="flex gap-6 relative transition-all duration-700"
+                    style={{
+                      opacity: isVisible ? 1 : 0,
+                      transform: isVisible ? 'translateY(0)' : 'translateY(18px)',
+                      filter: isVisible ? 'blur(0px)' : 'blur(3px)',
+                    }}
+                  >
                   <div
                     className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 z-10"
                     style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
@@ -249,8 +322,9 @@ function HowItWorks() {
                       {step.desc}
                     </p>
                   </div>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
