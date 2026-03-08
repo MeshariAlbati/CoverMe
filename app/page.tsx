@@ -340,14 +340,18 @@ export default function LandingPage() {
             <span className="font-serif text-[26px]" style={{ color: '#E5C07B' }}>Me</span>
           </Link>
           <div className="flex items-center gap-6">
-            <Link href="/login" className="landing-outline-cta-btn" aria-label="Sign in">
-              <span className="landing-outline-cta-text">
-                Sign in
-                <svg className="landing-outline-cta-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
-              </span>
+            <Link
+              href="/login"
+              className="text-[13px] font-medium transition-colors"
+              style={{ color: '#8A8A8E' }}
+              onMouseEnter={e => {
+                (e.target as HTMLElement).style.color = '#EDEDEF'
+              }}
+              onMouseLeave={e => {
+                (e.target as HTMLElement).style.color = '#8A8A8E'
+              }}
+            >
+              Sign in
             </Link>
           </div>
         </div>
