@@ -506,9 +506,32 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
         style={{
           backgroundColor: '#0A0A0B',
           backgroundImage: 'radial-gradient(ellipse 70% 35% at 50% 0%, rgba(229,192,123,0.045) 0%, transparent 65%), radial-gradient(ellipse 40% 20% at 80% 80%, rgba(97,175,239,0.025) 0%, transparent 60%)',
+          position: 'relative',
         }}
       >
-        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10 space-y-10">
+        {/* Decorative background rings */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
+          {/* Ring 1 — large gold, top-left */}
+          <div style={{ position: 'absolute', width: 280, height: 280, borderRadius: '50%', border: '1px solid rgba(229,192,123,0.18)', boxShadow: '0 0 18px rgba(229,192,123,0.05)', top: '8%', left: '5%', filter: 'blur(1px)', animation: 'ring-float-1 32s ease-in-out infinite', animationDelay: '0s' }} />
+          {/* Ring 2 — medium purple, top-right */}
+          <div style={{ position: 'absolute', width: 160, height: 160, borderRadius: '50%', border: '1px solid rgba(180,120,220,0.16)', boxShadow: '0 0 14px rgba(180,120,220,0.04)', top: '16%', right: '8%', filter: 'blur(0.5px)', animation: 'ring-float-2 26s ease-in-out infinite', animationDelay: '-4s' }} />
+          {/* Ring 3 — large gold, mid-right, atmospheric */}
+          <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', border: '1px solid rgba(229,192,123,0.10)', boxShadow: '0 0 24px rgba(229,192,123,0.03)', top: '36%', right: '-4%', filter: 'blur(2px)', animation: 'ring-float-3 50s ease-in-out infinite', animationDelay: '-12s' }} />
+          {/* Ring 4 — small purple, mid-left, rotating */}
+          <div style={{ position: 'absolute', width: 110, height: 110, borderRadius: '50%', border: '1px solid rgba(180,120,220,0.20)', top: '60%', left: '14%', animation: 'ring-float-4 22s ease-in-out infinite', animationDelay: '-6s' }} />
+          {/* Ring 5 — medium gold, bottom-center */}
+          <div style={{ position: 'absolute', width: 245, height: 245, borderRadius: '50%', border: '1px solid rgba(229,192,123,0.14)', boxShadow: '0 0 16px rgba(229,192,123,0.04)', bottom: '10%', left: '28%', filter: 'blur(1px)', animation: 'ring-float-5 38s ease-in-out infinite', animationDelay: '-15s' }} />
+          {/* Ring 6 — medium purple, top-center */}
+          <div style={{ position: 'absolute', width: 190, height: 190, borderRadius: '50%', border: '1px solid rgba(180,120,220,0.13)', top: '3%', left: '44%', filter: 'blur(0.5px)', animation: 'ring-float-1 30s ease-in-out infinite', animationDelay: '-9s' }} />
+          {/* Ring 7 — extra large gold, mid-center, deep atmospheric */}
+          <div style={{ position: 'absolute', width: 360, height: 360, borderRadius: '50%', border: '1px solid rgba(229,192,123,0.09)', boxShadow: '0 0 30px rgba(229,192,123,0.03)', top: '28%', left: '20%', filter: 'blur(2.5px)', animation: 'ring-float-6 56s ease-in-out infinite', animationDelay: '-20s' }} />
+          {/* Ring 8 — small gold, bottom-right */}
+          <div style={{ position: 'absolute', width: 125, height: 125, borderRadius: '50%', border: '1px solid rgba(229,192,123,0.19)', bottom: '4%', right: '10%', animation: 'ring-float-2 21s ease-in-out infinite', animationDelay: '-7s' }} />
+          {/* Ring 9 — tiny purple, lower-right */}
+          <div style={{ position: 'absolute', width: 88, height: 88, borderRadius: '50%', border: '1px solid rgba(180,120,220,0.18)', top: '76%', right: '24%', animation: 'ring-float-5 19s ease-in-out infinite', animationDelay: '-3s' }} />
+        </div>
+
+        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10 space-y-10" style={{ position: 'relative', zIndex: 1 }}>
 
           <div className="animate-fade-up">
             <h1
