@@ -16,7 +16,6 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
-import LightRays from '@/components/ui/LightRays'
 import type { ApplicationStatus, CoverLetter, LLMProvider } from '@/types'
 import { consumeSSE } from '@/lib/sse-client'
 import ProviderPicker from '@/components/ui/provider-picker'
@@ -503,27 +502,13 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
       )}
       <AppNavbar />
       <div
-        className="min-h-screen relative"
+        className="min-h-screen"
         style={{
           backgroundColor: '#0A0A0B',
           backgroundImage: 'radial-gradient(ellipse 70% 35% at 50% 0%, rgba(229,192,123,0.045) 0%, transparent 65%), radial-gradient(ellipse 40% 20% at 80% 80%, rgba(97,175,239,0.025) 0%, transparent 60%)',
         }}
       >
-        <LightRays
-          raysOrigin="top-center"
-          raysColor="#E5C07B"
-          raysSpeed={1}
-          lightSpread={0.5}
-          rayLength={3}
-          followMouse={false}
-          mouseInfluence={0}
-          noiseAmount={0}
-          distortion={0}
-          pulsating={false}
-          fadeDistance={1}
-          saturation={1}
-        />
-        <div className="relative z-10 max-w-[1100px] mx-auto px-6 sm:px-8 py-10 space-y-10">
+        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10 space-y-10">
 
           <div className="animate-fade-up">
             <h1
