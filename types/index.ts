@@ -84,6 +84,13 @@ export interface SkillMatches {
   key_value_proposition: string
 }
 
+export interface AtsAnalysis {
+  score: number
+  matched_keywords: string[]
+  missing_keywords: string[]
+  recommended_additions: string[]
+}
+
 export type ApplicationStatus = 'generated' | 'applied' | 'interview' | 'accepted' | 'rejected'
 
 export interface CoverLetter {
@@ -92,6 +99,9 @@ export interface CoverLetter {
   company_name: string
   company_research: CompanyResearch | null
   matched_skills: SkillMatches | null
+  job_description: string | null
+  job_url: string | null
+  ats_analysis: AtsAnalysis | null
   cover_letter_text: string
   version: number
   application_status: ApplicationStatus

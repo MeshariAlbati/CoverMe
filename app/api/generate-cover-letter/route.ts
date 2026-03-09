@@ -2,9 +2,11 @@ import { NextRequest } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { coverLetterGraph } from '@/lib/agents/graph'
-import type { Profile } from '@/types'
+import type { AtsAnalysis, Profile } from '@/types'
 import { resolveLlmProvider } from '@/lib/llm/provider'
 import { getGithubProjectHighlights } from '@/lib/github-projects'
+import { evaluateAtsMatch } from '@/lib/ats-score'
+import { fetchJobDescriptionFromUrl } from '@/lib/job-description'
 import { logError, logInfo, logWarn, maskEmail, serializeError } from '@/lib/server-logger'
 
 // Simple in-memory rate limiting (per user, 10 per hour)
@@ -34,6 +36,29 @@ function canUseClaudeForCoverLetter(email?: string | null): boolean {
 function trimText(value: string, max = 160): string {
   const normalized = value.replace(/\s+/g, ' ').trim()
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
+}
+
+function normalizeOptionalText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  if (!normalized) return null
+  return normalized.slice(0, maxLength)
+}
+
+function parseOptionalHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  if (!normalized) return null
+
+  try {
+    const parsed = new URL(normalized)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null
+    }
+    return parsed.toString()
+  } catch {
+    return null
+  }
 }
 
 function normalizeManualProjects(input: unknown): ManualProjectShape[] {
@@ -112,7 +137,7 @@ export async function POST(req: NextRequest) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
   const companyName = typeof body?.company_name === 'string' ? body.company_name : ''
   const requestedProvider = resolveLlmProvider(body?.provider)
   const isClaudeAllowedForUser = canUseClaudeForCoverLetter(user.email)
@@ -122,6 +147,9 @@ export async function POST(req: NextRequest) {
       : requestedProvider
   const regenerate_id = typeof body?.regenerate_id === 'string' ? body.regenerate_id : undefined
   const normalizedCompanyName = companyName.trim()
+  const providedJobDescription = normalizeOptionalText(body?.job_description, 20000)
+  const rawJobUrl = typeof body?.job_url === 'string' ? body.job_url : ''
+  const jobUrl = parseOptionalHttpUrl(rawJobUrl)
 
   if (requestedProvider === 'claude' && llmProvider === 'groq') {
     logWarn('cover_letter_claude_restricted_user', {
@@ -141,6 +169,16 @@ export async function POST(req: NextRequest) {
     return new Response('Company name is required', { status: 400 })
   }
 
+  if (rawJobUrl.trim() && !jobUrl) {
+    logWarn('cover_letter_generation_invalid_job_url', {
+      request_id: requestId,
+      user_id: user.id,
+      company: normalizedCompanyName,
+      provider: llmProvider,
+    })
+    return new Response('Job URL must be a valid http(s) URL', { status: 400 })
+  }
+
   if (!checkRateLimit(user.id)) {
     logWarn('cover_letter_generation_rate_limited', {
       request_id: requestId,
@@ -157,6 +195,8 @@ export async function POST(req: NextRequest) {
     company: normalizedCompanyName,
     provider: llmProvider,
     regenerate_id: regenerate_id || null,
+    has_job_description: Boolean(providedJobDescription),
+    has_job_url: Boolean(jobUrl),
   })
 
   return createSSEStream(async (controller) => {
@@ -165,6 +205,9 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     let draftRecordId: string | null = null
+    let effectiveJobDescription = providedJobDescription
+    let effectiveJobUrl = jobUrl
+    let jobDescriptionSource: 'scraped' | 'provided' | null = providedJobDescription ? 'provided' : null
 
     const cleanupDraft = async () => {
       if (!draftRecordId) return
@@ -267,12 +310,65 @@ export async function POST(req: NextRequest) {
       if (regenerate_id) {
         const { data: previousVersionRow } = await supabase
           .from('cover_letters')
-          .select('version')
+          .select('version, job_description, job_url')
           .eq('id', regenerate_id)
           .eq('user_id', user.id)
           .maybeSingle()
         if (previousVersionRow?.version) {
           version = previousVersionRow.version + 1
+        }
+
+        if (!effectiveJobDescription && typeof previousVersionRow?.job_description === 'string') {
+          const previousJobDescription = previousVersionRow.job_description.trim()
+          if (previousJobDescription) {
+            effectiveJobDescription = previousJobDescription
+            jobDescriptionSource = 'provided'
+          }
+        }
+
+        if (!effectiveJobUrl && typeof previousVersionRow?.job_url === 'string') {
+          const previousJobUrl = parseOptionalHttpUrl(previousVersionRow.job_url)
+          if (previousJobUrl) {
+            effectiveJobUrl = previousJobUrl
+          }
+        }
+      }
+
+      if (effectiveJobUrl) {
+        sendEvent(controller, 'progress', {
+          step: 'researching',
+          message: 'Reading job posting for ATS requirements...',
+        })
+
+        const scrapeResult = await fetchJobDescriptionFromUrl(effectiveJobUrl)
+        if (scrapeResult.jobDescription) {
+          effectiveJobDescription = scrapeResult.jobDescription
+          jobDescriptionSource = 'scraped'
+          logInfo('cover_letter_generation_job_description_scraped', {
+            request_id: requestId,
+            user_id: user.id,
+            company: normalizedCompanyName,
+            source: scrapeResult.source,
+          })
+        } else {
+          logWarn('cover_letter_generation_job_description_scrape_failed', {
+            request_id: requestId,
+            user_id: user.id,
+            company: normalizedCompanyName,
+            reason: scrapeResult.reason || 'unknown',
+            fallback_to_provided: Boolean(effectiveJobDescription),
+          })
+          if (effectiveJobDescription) {
+            sendEvent(controller, 'progress', {
+              step: 'researching',
+              message: 'Job posting blocked. Using your pasted job description for ATS.',
+            })
+          } else {
+            sendEvent(controller, 'progress', {
+              step: 'researching',
+              message: 'Job posting blocked. Continue generation, then paste JD to unlock ATS.',
+            })
+          }
         }
       }
 
@@ -281,6 +377,8 @@ export async function POST(req: NextRequest) {
         .insert({
           user_id: user.id,
           company_name: normalizedCompanyName,
+          job_description: effectiveJobDescription,
+          job_url: effectiveJobUrl,
           cover_letter_text: '',
           version,
         })
@@ -314,6 +412,8 @@ export async function POST(req: NextRequest) {
           project_highlights_summary: projectHighlightsSummary,
         } as Profile,
         company_name: normalizedCompanyName,
+        job_description: effectiveJobDescription,
+        job_url: effectiveJobUrl,
         company_research: cachedResearch,
         skill_matches: null,
         cover_letter: '',
@@ -371,6 +471,7 @@ export async function POST(req: NextRequest) {
       const finalCoverLetter = finalState.cover_letter as string
       const companyResearch = finalState.company_research
       const skillMatches = finalState.skill_matches
+      let atsAnalysis: AtsAnalysis | null = null
 
       if (!finalCoverLetter) {
         logError('cover_letter_generation_empty_output', {
@@ -385,6 +486,14 @@ export async function POST(req: NextRequest) {
         return
       }
 
+      if (effectiveJobDescription) {
+        atsAnalysis = evaluateAtsMatch({
+          jobDescription: effectiveJobDescription,
+          userProfile: initialState.user_profile as Profile,
+          coverLetterText: finalCoverLetter,
+        })
+      }
+
       // Save final result
       const { error: saveError } = await adminClient
         .from('cover_letters')
@@ -392,6 +501,7 @@ export async function POST(req: NextRequest) {
           cover_letter_text: finalCoverLetter,
           company_research: companyResearch,
           matched_skills: skillMatches,
+          ats_analysis: atsAnalysis,
         })
         .eq('id', newRecord.id)
 
@@ -414,6 +524,7 @@ export async function POST(req: NextRequest) {
         cover_letter: finalCoverLetter,
         company_research: companyResearch,
         skill_matches: skillMatches,
+        ats_analysis: atsAnalysis,
       })
 
       logInfo('cover_letter_generation_completed', {
@@ -422,6 +533,8 @@ export async function POST(req: NextRequest) {
         record_id: newRecord.id,
         company: normalizedCompanyName,
         provider: llmProvider,
+        ats_score: atsAnalysis?.score ?? null,
+        job_description_source: jobDescriptionSource,
       })
       controller.close()
     } catch (error) {

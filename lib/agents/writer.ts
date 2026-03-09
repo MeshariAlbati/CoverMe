@@ -20,6 +20,19 @@ const TONE_INSTRUCTIONS = {
   balanced: 'Balance professionalism with warmth. Confident but approachable.',
 }
 
+const RELEVANCE_STOPWORDS = new Set([
+  'and', 'the', 'for', 'with', 'from', 'that', 'this', 'have', 'has', 'were', 'was', 'are',
+  'you', 'your', 'our', 'their', 'will', 'can', 'able', 'ability', 'role', 'team', 'company',
+  'work', 'working', 'years', 'experience', 'using', 'through', 'across', 'into', 'about',
+  'over', 'under', 'into', 'within', 'while', 'including', 'required', 'preferred',
+])
+
+interface ProjectCandidate {
+  name: string
+  description: string
+  url: string
+}
+
 function trimText(value: unknown, max = 260): string {
   if (typeof value !== 'string') {
     return ''
@@ -51,6 +64,108 @@ function normalizeResponseText(content: unknown): string {
   return ''
 }
 
+function tokenizeForRelevance(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#./\-\s]/g, ' ')
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(token => token.length >= 3)
+    .filter(token => !RELEVANCE_STOPWORDS.has(token))
+}
+
+function buildRoleContextTokens(state: CoverLetterState): Set<string> {
+  const inputs: string[] = []
+  const company = state.company_research
+  const matches = state.skill_matches
+
+  inputs.push(trimText(state.job_description, 5000))
+
+  if (company) {
+    inputs.push(
+      trimText(company.what_they_look_for, 600),
+      trimText(company.products_and_services, 500),
+      ...((company.tech_stack || []).slice(0, 20)),
+      ...((company.growth_areas || []).slice(0, 8)),
+      ...((company.culture_keywords || []).slice(0, 10))
+    )
+  }
+
+  if (matches) {
+    for (const item of (matches.top_matches || []).slice(0, 6)) {
+      inputs.push(
+        trimText(item.user_skill_or_experience, 160),
+        trimText(item.company_need_it_addresses, 180),
+        trimText(item.suggested_framing, 180)
+      )
+    }
+  }
+
+  const tokens = new Set<string>()
+  for (const input of inputs) {
+    for (const token of tokenizeForRelevance(input)) {
+      tokens.add(token)
+    }
+  }
+
+  return tokens
+}
+
+function scoreRelevance(text: string, contextTokens: Set<string>): number {
+  if (!text || contextTokens.size === 0) return 0
+
+  const tokens = new Set(tokenizeForRelevance(text))
+  if (tokens.size === 0) return 0
+
+  let overlap = 0
+  for (const token of tokens) {
+    if (contextTokens.has(token)) overlap++
+  }
+
+  const normalizedOverlap = overlap / Math.max(1, Math.min(tokens.size, 12))
+  return normalizedOverlap
+}
+
+function pickMostRelevantStrings(items: string[], contextTokens: Set<string>, max = 3): string[] {
+  return items
+    .map(item => ({ item: trimText(item, 220), score: scoreRelevance(item, contextTokens) }))
+    .filter(entry => entry.item)
+    .sort((a, b) => b.score - a.score)
+    .filter((entry, idx) => entry.score > 0 || idx === 0)
+    .slice(0, max)
+    .map(entry => entry.item)
+}
+
+function normalizeProjects(state: CoverLetterState): ProjectCandidate[] {
+  const manualProjects = Array.isArray(state.user_profile.manual_projects)
+    ? state.user_profile.manual_projects
+    : []
+
+  return manualProjects
+    .map(project => ({
+      name: trimText(project.name, 80),
+      description: trimText(project.description, 180),
+      url: trimText(project.url, 80),
+    }))
+    .filter(project => project.name && project.description)
+}
+
+function pickMostRelevantProjects(
+  projects: ProjectCandidate[],
+  contextTokens: Set<string>,
+  max = 3
+): ProjectCandidate[] {
+  return projects
+    .map(project => ({
+      project,
+      score: scoreRelevance(`${project.name} ${project.description}`, contextTokens),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .filter((entry, idx) => entry.score > 0 || idx === 0)
+    .slice(0, max)
+    .map(entry => entry.project)
+}
+
 function buildProofPoints(state: CoverLetterState): string[] {
   const experiences = Array.isArray(state.user_profile.work_experience)
     ? state.user_profile.work_experience
@@ -77,48 +192,28 @@ function buildProofPoints(state: CoverLetterState): string[] {
   return [...new Set(points)].filter(Boolean).slice(0, 4)
 }
 
-function buildCertificationProofPoints(state: CoverLetterState): string[] {
-  const certifications = Array.isArray(state.user_profile.certifications)
-    ? state.user_profile.certifications
-    : []
-
+function buildCertificationProofPoints(certifications: string[]): string[] {
   return certifications
     .map(cert => trimText(cert, 120))
     .filter(Boolean)
-    .slice(0, 4)
+    .slice(0, 3)
     .map(cert => `Certification: ${cert}`)
 }
 
-function buildManualProjectProofPoints(state: CoverLetterState): string[] {
-  const manualProjects = Array.isArray(state.user_profile.manual_projects)
-    ? state.user_profile.manual_projects
-    : []
-
+function buildManualProjectProofPoints(manualProjects: ProjectCandidate[]): string[] {
   return manualProjects
-    .map(project => ({
-      name: trimText(project.name, 80),
-      description: trimText(project.description, 160),
-      url: trimText(project.url, 80),
-    }))
-    .filter(project => project.name && project.description)
-    .slice(0, 4)
+    .slice(0, 3)
     .map(project => {
       const base = `Manual project: ${project.name} | ${project.description}`
       return project.url ? `${base} | URL: ${project.url}` : base
     })
 }
 
-function buildProjectHighlightProofPoints(state: CoverLetterState): string[] {
-  const projects = Array.isArray(state.user_profile.project_highlights_summary)
-    ? state.user_profile.project_highlights_summary
-    : Array.isArray(state.user_profile.github_projects_summary)
-      ? state.user_profile.github_projects_summary
-    : []
-
+function buildProjectHighlightProofPoints(projects: string[]): string[] {
   return projects
     .map(project => trimText(project, 180))
     .filter(Boolean)
-    .slice(0, 4)
+    .slice(0, 3)
     .map(project => `Project: ${project}`)
 }
 
@@ -145,27 +240,35 @@ export async function writeLetterNode(
   const bridgeStories = Array.isArray(state.skill_matches.bridge_stories)
     ? state.skill_matches.bridge_stories
     : []
+  const contextTokens = buildRoleContextTokens(state)
+
+  const allCertifications = Array.isArray(state.user_profile.certifications)
+    ? state.user_profile.certifications
+    : []
+  const relevantCertifications = pickMostRelevantStrings(allCertifications, contextTokens, 3)
+
+  const allManualProjects = normalizeProjects(state)
+  const relevantManualProjects = pickMostRelevantProjects(allManualProjects, contextTokens, 3)
+
+  const allProjectHighlights = Array.isArray(state.user_profile.project_highlights_summary)
+    ? state.user_profile.project_highlights_summary
+    : Array.isArray(state.user_profile.github_projects_summary)
+      ? state.user_profile.github_projects_summary
+    : []
+  const relevantProjectHighlights = pickMostRelevantStrings(allProjectHighlights, contextTokens, 3)
+
   const experienceProofPoints = buildProofPoints(state)
-  const certificationProofPoints = buildCertificationProofPoints(state)
-  const manualProjectProofPoints = buildManualProjectProofPoints(state)
-  const projectHighlightProofPoints = buildProjectHighlightProofPoints(state)
+  const certificationProofPoints = buildCertificationProofPoints(relevantCertifications)
+  const manualProjectProofPoints = buildManualProjectProofPoints(relevantManualProjects)
+  const projectHighlightProofPoints = buildProjectHighlightProofPoints(relevantProjectHighlights)
   const proofPoints = [
     ...experienceProofPoints,
     ...certificationProofPoints,
     ...manualProjectProofPoints,
     ...projectHighlightProofPoints,
   ].slice(0, 8)
-  const certifications = Array.isArray(state.user_profile.certifications)
-    ? state.user_profile.certifications
-    : []
-  const manualProjects = Array.isArray(state.user_profile.manual_projects)
-    ? state.user_profile.manual_projects
-    : []
-  const projectHighlights = Array.isArray(state.user_profile.project_highlights_summary)
-    ? state.user_profile.project_highlights_summary
-    : Array.isArray(state.user_profile.github_projects_summary)
-      ? state.user_profile.github_projects_summary
-    : []
+  const jobDescription = trimText(state.job_description, 5000)
+  const jobUrl = trimText(state.job_url, 300)
 
   try {
     const claudeWriterModels = getStageAnthropicModels('ANTHROPIC_WRITER_MODEL', 'ANTHROPIC_WRITER_MODELS')
@@ -185,8 +288,11 @@ CRITICAL RULES:
   2) What the candidate has done (evidence)
   3) Exactly how the candidate will help this team
 - Use at least 2 concrete proof points from the candidate profile
+- If a job description is provided, address at least 2 explicit job requirements
+- Do NOT center the letter on non-core admin constraints (language, location, visa, relocation, availability)
 - If relevant certifications exist, use at least one as supporting evidence
 - If relevant projects are provided (GitHub or manual), use one concrete project detail when it strengthens fit
+- Certifications/projects below are pre-filtered for relevance. Do NOT mention unrelated ones.
 - Avoid repetition and generic claims
 - NEVER use these phrases:
   - "I am writing to express my interest"
@@ -197,6 +303,10 @@ CRITICAL RULES:
 - Use specific, outcome-oriented language instead of praise-heavy language
 - Never invent certifications or credentials that are not provided`
 
+    const jobContext = jobDescription
+      ? `\nTARGET ROLE CONTEXT:\nJob URL: ${jobUrl || 'Not provided'}\nJob description:\n${jobDescription}\n\nWhen role requirements are explicit, align the letter to core role requirements with direct evidence.\nAvoid over-emphasizing non-core constraints like language/location/visa logistics unless truly essential.\n`
+      : ''
+
     const userPrompt = `Write a cover letter using this information:
 
 CANDIDATE PROFILE:
@@ -206,12 +316,12 @@ Years of Experience: ${state.user_profile.years_of_experience}
 Career Goal: ${state.user_profile.career_intent}
 What makes them unique: ${trimText(state.user_profile.unique_value, 220)}
 Proudest achievement: ${trimText(state.user_profile.proudest_achievement, 240)}
-Certifications: ${certifications.length > 0 ? certifications.join(', ') : 'None provided'}
+Relevant certifications: ${relevantCertifications.length > 0 ? relevantCertifications.join(', ') : 'None provided'}
 GitHub profile: ${state.user_profile.github_url || 'None provided'}
-Manual projects:
-${manualProjects.length > 0 ? manualProjects.map(project => `- ${trimText(project.name, 80)}: ${trimText(project.description, 180)}`).join('\n') : '- None provided'}
-Project highlights (GitHub + manual):
-${projectHighlights.length > 0 ? projectHighlights.map(project => `- ${project}`).join('\n') : '- None provided'}
+Relevant manual projects:
+${relevantManualProjects.length > 0 ? relevantManualProjects.map(project => `- ${project.name}: ${project.description}`).join('\n') : '- None provided'}
+Relevant project highlights (GitHub + manual):
+${relevantProjectHighlights.length > 0 ? relevantProjectHighlights.map(project => `- ${project}`).join('\n') : '- None provided'}
 ${state.user_profile.things_to_emphasize ? `Emphasize: ${trimText(state.user_profile.things_to_emphasize, 220)}` : ''}
 ${state.user_profile.things_to_downplay ? `Downplay: ${trimText(state.user_profile.things_to_downplay, 220)}` : ''}
 
@@ -222,6 +332,7 @@ Culture keywords: ${cultureKeywords.join(', ')}
 What they look for: ${trimText(state.company_research.what_they_look_for, 360)}
 Recent context: ${recentNews.slice(0, 2).map(item => trimText(item, 180)).join('; ')}
 Growth areas: ${growthAreas.join(', ')}
+${jobContext}
 
 NARRATIVE STRATEGY:
 Arc: ${state.skill_matches.recommended_narrative_arc}

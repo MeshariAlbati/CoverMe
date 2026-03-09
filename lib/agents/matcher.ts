@@ -123,8 +123,13 @@ export async function matchSkillsNode(
       what_they_look_for: trimText(state.company_research.what_they_look_for, 500),
     }
     const companyData = JSON.stringify(compactCompany, null, 2)
+    const jobDescription = trimText(state.job_description, 5000)
 
-    const prompt = `CANDIDATE PROFILE:\n${profileSummary}\n\nCOMPANY RESEARCH:\n${companyData}\n\nAnalyze which of the candidate's skills, experiences, and achievements are most relevant to this company.\nConsider their career_intent (${state.user_profile.career_intent}) when framing the narrative.\n\nReturn this exact JSON structure with no markdown or explanation:\n{\n  "top_matches": [\n    {\n      "user_skill_or_experience": "",\n      "company_need_it_addresses": "",\n      "relevance": "high",\n      "suggested_framing": ""\n    }\n  ],\n  "bridge_stories": [\n    {\n      "experience": "",\n      "connection_to_company": "",\n      "narrative_angle": ""\n    }\n  ],\n  "gaps_to_address": [""],\n  "recommended_narrative_arc": "",\n  "key_value_proposition": ""\n}\n\nInclude 3-5 top_matches ranked by relevance (high/medium/low).\nInclude 1-2 bridge_stories connecting the candidate to the company even if not obvious.`
+    const jobDescriptionContext = jobDescription
+      ? `\nTARGET JOB DESCRIPTION:\n${jobDescription}\n\nWhen this job description is provided, prioritize explicit core role requirements over generic assumptions.\nDe-prioritize non-core constraints like language fluency, location, nationality, visa/relocation, and availability logistics unless they are central to performing the role.\nMake sure gaps_to_address focuses on meaningful role-skill gaps from the JD, not admin/location constraints.\n`
+      : ''
+
+    const prompt = `CANDIDATE PROFILE:\n${profileSummary}\n\nCOMPANY RESEARCH:\n${companyData}\n${jobDescriptionContext}\nAnalyze which of the candidate's skills, experiences, and achievements are most relevant to this company and role.\nConsider their career_intent (${state.user_profile.career_intent}) when framing the narrative.\n\nReturn this exact JSON structure with no markdown or explanation:\n{\n  "top_matches": [\n    {\n      "user_skill_or_experience": "",\n      "company_need_it_addresses": "",\n      "relevance": "high",\n      "suggested_framing": ""\n    }\n  ],\n  "bridge_stories": [\n    {\n      "experience": "",\n      "connection_to_company": "",\n      "narrative_angle": ""\n    }\n  ],\n  "gaps_to_address": [""],\n  "recommended_narrative_arc": "",\n  "key_value_proposition": ""\n}\n\nInclude 3-5 top_matches ranked by relevance (high/medium/low).\nInclude 1-2 bridge_stories connecting the candidate to the company even if not obvious.`
 
     const systemPrompt =
       'You are an expert career strategist. Analyze the alignment between a candidate profile and a company. Return ONLY valid JSON with no markdown or explanation.'

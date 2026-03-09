@@ -227,6 +227,9 @@ function StatCard({
 export default function DashboardClient({ profile, initialCoverLetters }: Props) {
   const router = useRouter()
   const [companyName, setCompanyName] = useState('')
+  const [jobUrl, setJobUrl] = useState('')
+  const [jobDescription, setJobDescription] = useState('')
+  const [showManualAtsFallback, setShowManualAtsFallback] = useState(false)
   const [llmProvider, setLlmProvider] = useState<LLMProvider>('groq')
   const [generating, setGenerating] = useState(false)
   const [generatingMessage, setGeneratingMessage] = useState('')
@@ -331,7 +334,12 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
       const response = await fetch('/api/generate-cover-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName, provider: llmProvider }),
+        body: JSON.stringify({
+          company_name: companyName,
+          provider: llmProvider,
+          job_url: jobUrl.trim() || null,
+          job_description: jobDescription.trim() || null,
+        }),
         signal: abortRef.current.signal,
       })
 
@@ -605,14 +613,65 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
                 lockedClaudeMessage="Sorry but it cost a lot ): "
               />
             </div>
-            <form onSubmit={handleGenerate} className="flex flex-col sm:flex-row gap-3">
+            <form onSubmit={handleGenerate} className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  ref={inputRef}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Enter company name (e.g. Stripe, Notion, Anthropic)"
+                  disabled={generating || profileIncomplete}
+                  className="flex-1 h-10 px-4 rounded text-[14px] outline-none transition-all duration-200"
+                  style={{
+                    backgroundColor: '#1A1A1F',
+                    border: '1px solid #222228',
+                    color: '#EDEDEF',
+                    opacity: (generating || profileIncomplete) ? 0.5 : 1,
+                    cursor: (generating || profileIncomplete) ? 'not-allowed' : 'text',
+                  }}
+                  onFocus={(e) => {
+                    if (!generating && !profileIncomplete) {
+                      e.target.style.borderColor = '#E5C07B'
+                      e.target.style.boxShadow = '0 0 0 2px rgba(229, 192, 123, 0.08)'
+                    }
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#222228'
+                    e.target.style.boxShadow = 'none'
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={generating || !companyName.trim() || profileIncomplete}
+                  className="landing-cta-btn sm:w-auto w-full"
+                  style={{
+                    opacity: (generating || !companyName.trim() || profileIncomplete) ? 0.5 : 1,
+                    cursor: (generating || !companyName.trim() || profileIncomplete) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <i className="landing-cta-shimmer" />
+                  <span className="landing-cta-text">
+                    {generating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating
+                      </>
+                    ) : (
+                      <>
+                        Generate
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </span>
+                </button>
+              </div>
+
               <input
-                ref={inputRef}
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Enter company name (e.g. Stripe, Notion, Anthropic)"
+                value={jobUrl}
+                onChange={(e) => setJobUrl(e.target.value)}
+                placeholder="Optional job URL (https://...)"
                 disabled={generating || profileIncomplete}
-                className="flex-1 h-10 px-4 rounded text-[14px] outline-none transition-all duration-200"
+                className="w-full h-10 px-4 rounded text-[13px] outline-none transition-all duration-200"
                 style={{
                   backgroundColor: '#1A1A1F',
                   border: '1px solid #222228',
@@ -631,30 +690,52 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
                   e.target.style.boxShadow = 'none'
                 }}
               />
-              <button
-                type="submit"
-                disabled={generating || !companyName.trim() || profileIncomplete}
-                className="landing-cta-btn sm:w-auto w-full"
-                style={{
-                  opacity: (generating || !companyName.trim() || profileIncomplete) ? 0.5 : 1,
-                  cursor: (generating || !companyName.trim() || profileIncomplete) ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <i className="landing-cta-shimmer" />
-                <span className="landing-cta-text">
-                  {generating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Generating
-                    </>
-                  ) : (
-                    <>
-                      Generate
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </span>
-              </button>
+
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px]" style={{ color: '#4A4A50' }}>
+                  We auto-read ATS requirements from the job URL.
+                </p>
+                <button
+                  type="button"
+                  disabled={generating || profileIncomplete}
+                  onClick={() => setShowManualAtsFallback(prev => !prev)}
+                  className="text-[12px] underline underline-offset-4 transition-opacity"
+                  style={{
+                    color: '#8A8A8E',
+                    opacity: (generating || profileIncomplete) ? 0.5 : 1,
+                    cursor: (generating || profileIncomplete) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {showManualAtsFallback ? 'Hide manual ATS fallback' : 'Scrape failed? Paste JD manually'}
+                </button>
+              </div>
+
+              {showManualAtsFallback && (
+                <textarea
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  placeholder="Fallback job description (used only if scraping is blocked)"
+                  disabled={generating || profileIncomplete}
+                  className="w-full min-h-[120px] px-4 py-3 rounded text-[13px] outline-none transition-all duration-200 resize-y"
+                  style={{
+                    backgroundColor: '#1A1A1F',
+                    border: '1px solid #222228',
+                    color: '#EDEDEF',
+                    opacity: (generating || profileIncomplete) ? 0.5 : 1,
+                    cursor: (generating || profileIncomplete) ? 'not-allowed' : 'text',
+                  }}
+                  onFocus={(e) => {
+                    if (!generating && !profileIncomplete) {
+                      e.target.style.borderColor = '#E5C07B'
+                      e.target.style.boxShadow = '0 0 0 2px rgba(229, 192, 123, 0.08)'
+                    }
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#222228'
+                    e.target.style.boxShadow = 'none'
+                  }}
+                />
+              )}
             </form>
 
             {error && (

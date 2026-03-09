@@ -8,6 +8,14 @@ export const CoverLetterStateAnnotation = Annotation.Root({
   }),
   user_profile: Annotation<Profile>(),
   company_name: Annotation<string>(),
+  job_description: Annotation<string | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  job_url: Annotation<string | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
   company_research: Annotation<CompanyResearch | null>({
     default: () => null,
     reducer: (_, next) => next,

@@ -6,10 +6,10 @@ import Link from 'next/link'
 import {
   ArrowLeft, Copy, Download, RefreshCw, ThumbsUp, ThumbsDown,
   Building2, Target, Loader2, Edit3, Save, X,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Gauge, Link2
 } from 'lucide-react'
 import AppNavbar from '@/components/layout/AppNavbar'
-import type { CoverLetter, CompanyResearch, LLMProvider, SkillMatches } from '@/types'
+import type { AtsAnalysis, CoverLetter, CompanyResearch, LLMProvider, SkillMatches } from '@/types'
 import { consumeSSE } from '@/lib/sse-client'
 import ProviderPicker from '@/components/ui/provider-picker'
 
@@ -116,6 +116,51 @@ function buildProfessionalSections(text: string, safeUserName: string): string[]
   return sections
 }
 
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(item => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function normalizeAtsAnalysis(value: unknown): AtsAnalysis | null {
+  if (!value || typeof value !== 'object') return null
+
+  const scoreRaw = (value as { score?: unknown }).score
+  const score = typeof scoreRaw === 'number' ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : null
+  if (score === null) return null
+
+  return {
+    score,
+    matched_keywords: readStringArray((value as { matched_keywords?: unknown }).matched_keywords),
+    missing_keywords: readStringArray((value as { missing_keywords?: unknown }).missing_keywords),
+    recommended_additions: readStringArray((value as { recommended_additions?: unknown }).recommended_additions),
+  }
+}
+
+function getAtsScoreColor(score: number): { text: string; border: string; bar: string } {
+  if (score >= 80) {
+    return {
+      text: '#7EC699',
+      border: 'rgba(126, 198, 153, 0.35)',
+      bar: '#7EC699',
+    }
+  }
+  if (score >= 60) {
+    return {
+      text: '#E5C07B',
+      border: 'rgba(229, 192, 123, 0.35)',
+      bar: '#E5C07B',
+    }
+  }
+  return {
+    text: '#E06C75',
+    border: 'rgba(224, 108, 117, 0.35)',
+    bar: '#E06C75',
+  }
+}
+
 export default function GenerationView({ coverLetter, userFullName }: Props) {
   const safeUserName = userFullName?.trim() || 'Candidate'
   const router = useRouter()
@@ -132,6 +177,10 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
 
   const research = coverLetter.company_research as CompanyResearch | null
   const matches = coverLetter.matched_skills as SkillMatches | null
+  const atsAnalysis = normalizeAtsAnalysis(coverLetter.ats_analysis)
+  const atsColors = atsAnalysis ? getAtsScoreColor(atsAnalysis.score) : null
+  const jobDescription = (coverLetter.job_description || '').trim()
+  const hasJobContext = Boolean(jobDescription || coverLetter.job_url)
 
   useEffect(() => {
     const stored = window.localStorage.getItem(GENERATION_PROVIDER_STORAGE_KEY)
@@ -227,6 +276,8 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
           company_name: coverLetter.company_name,
           regenerate_id: coverLetter.id,
           provider: llmProvider,
+          job_url: coverLetter.job_url,
+          job_description: coverLetter.job_description,
         }),
       })
 
@@ -457,6 +508,150 @@ export default function GenerationView({ coverLetter, userFullName }: Props) {
               )}
             </div>
           </div>
+
+          {(hasJobContext || atsAnalysis) && (
+            <div
+              className="rounded-lg border overflow-hidden animate-fade-up"
+              style={{
+                backgroundColor: '#111113',
+                borderColor: atsColors?.border || '#222228',
+                animationDelay: '0.12s',
+                animationFillMode: 'both',
+              }}
+            >
+              <div
+                className="px-6 py-4 border-b flex flex-wrap items-center justify-between gap-3"
+                style={{ borderColor: '#1A1A1F' }}
+              >
+                <div className="flex items-center gap-2">
+                  <Gauge className="w-4 h-4" style={{ color: atsColors?.text || '#555559' }} />
+                  <span className="font-mono text-[12px] tracking-wider uppercase" style={{ color: '#555559' }}>
+                    ATS Match Insights
+                  </span>
+                </div>
+                {atsAnalysis && (
+                  <div
+                    className="px-2.5 py-1 rounded border font-mono text-[12px]"
+                    style={{
+                      color: atsColors?.text || '#8A8A8E',
+                      borderColor: atsColors?.border || '#222228',
+                      backgroundColor: '#0A0A0B',
+                    }}
+                  >
+                    Score: {atsAnalysis.score}/100
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 space-y-5">
+                {coverLetter.job_url && (
+                  <a
+                    href={coverLetter.job_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[12px] underline-offset-4 hover:underline"
+                    style={{ color: '#8A8A8E' }}
+                  >
+                    <Link2 className="w-3 h-3" />
+                    View job posting
+                  </a>
+                )}
+
+                {jobDescription && (
+                  <div>
+                    <p className="font-mono text-[11px] tracking-wider uppercase mb-2" style={{ color: '#555559' }}>
+                      Job Description Snapshot
+                    </p>
+                    <p className="text-[13px] leading-[1.6]" style={{ color: '#8A8A8E' }}>
+                      {jobDescription.slice(0, 400)}
+                      {jobDescription.length > 400 ? '...' : ''}
+                    </p>
+                  </div>
+                )}
+
+                {atsAnalysis ? (
+                  <>
+                    <div>
+                      <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#1A1A1F' }}>
+                        <div
+                          className="h-full transition-all duration-500"
+                          style={{
+                            width: `${atsAnalysis.score}%`,
+                            backgroundColor: atsColors?.bar || '#8A8A8E',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {atsAnalysis.matched_keywords.length > 0 && (
+                      <div>
+                        <p className="font-mono text-[11px] tracking-wider uppercase mb-2" style={{ color: '#555559' }}>
+                          Matched Keywords
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {atsAnalysis.matched_keywords.map((keyword) => (
+                            <span
+                              key={keyword}
+                              className="text-[12px] px-2 py-0.5 rounded border"
+                              style={{
+                                color: '#7EC699',
+                                borderColor: 'rgba(126, 198, 153, 0.25)',
+                                backgroundColor: 'rgba(126, 198, 153, 0.08)',
+                              }}
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {atsAnalysis.missing_keywords.length > 0 && (
+                      <div>
+                        <p className="font-mono text-[11px] tracking-wider uppercase mb-2" style={{ color: '#555559' }}>
+                          Missing Keywords
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {atsAnalysis.missing_keywords.map((keyword) => (
+                            <span
+                              key={keyword}
+                              className="text-[12px] px-2 py-0.5 rounded border"
+                              style={{
+                                color: '#E06C75',
+                                borderColor: 'rgba(224, 108, 117, 0.28)',
+                                backgroundColor: 'rgba(224, 108, 117, 0.08)',
+                              }}
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {atsAnalysis.recommended_additions.length > 0 && (
+                      <div>
+                        <p className="font-mono text-[11px] tracking-wider uppercase mb-2" style={{ color: '#555559' }}>
+                          Suggested Improvements
+                        </p>
+                        <ul className="space-y-1.5">
+                          {atsAnalysis.recommended_additions.map((suggestion, index) => (
+                            <li key={`${suggestion}-${index}`} className="text-[13px] leading-[1.5]" style={{ color: '#8A8A8E' }}>
+                              {suggestion}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[13px]" style={{ color: '#8A8A8E' }}>
+                    ATS analysis is available when the generation includes a detailed job description.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Research & Analysis drawer */}
           {(research || matches) && (
