@@ -222,38 +222,63 @@ function HowItWorks() {
     },
   ]
 
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const [revealedCount, setRevealedCount] = useState(0)
   const [visibleLeft, setVisibleLeft] = useState(false)
-  const [visibleSteps, setVisibleSteps] = useState<boolean[]>([false, false, false])
-  const sectionRef = useRef<HTMLElement>(null)
-  const triggered = useRef(false)
 
   useEffect(() => {
-    const el = sectionRef.current
-    if (!el) return
+    const section = sectionRef.current
+    if (!section) return
+
+    let revealInterval: ReturnType<typeof setInterval> | undefined
+
+    const stopReveal = () => {
+      if (revealInterval) {
+        clearInterval(revealInterval)
+        revealInterval = undefined
+      }
+    }
+
+    const startReveal = () => {
+      if (revealInterval) return
+      setVisibleLeft(true)
+      setRevealedCount((current) => (current === 0 ? 1 : current))
+      revealInterval = setInterval(() => {
+        setRevealedCount((current) => {
+          if (current >= steps.length) {
+            stopReveal()
+            return current
+          }
+          return current + 1
+        })
+      }, 260)
+    }
 
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !triggered.current) {
-          triggered.current = true
-          setVisibleLeft(true)
-          steps.forEach((_, i) => {
-            setTimeout(() => {
-              setVisibleSteps(prev => {
-                const next = [...prev]
-                next[i] = true
-                return next
-              })
-            }, 100 + i * 200)
-          })
-          observer.disconnect()
+      (entries) => {
+        const [entry] = entries
+        if (!entry) return
+
+        if (entry.isIntersecting) {
+          startReveal()
+          return
+        }
+
+        stopReveal()
+        if (entry.boundingClientRect.top > 0) {
+          setRevealedCount(0)
+          setVisibleLeft(false)
         }
       },
-      { threshold: 0.15 }
+      { threshold: 0.35 }
     )
 
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+    observer.observe(section)
+    return () => {
+      observer.disconnect()
+      stopReveal()
+    }
+  }, [steps.length])
 
   return (
     <section ref={sectionRef} className="py-28 px-6 sm:px-12 border-t" style={{ borderColor: '#1E1E23' }}>
@@ -290,34 +315,38 @@ function HowItWorks() {
             />
 
             <div className="space-y-10">
-              {steps.map((step, i) => (
-                <div
-                  key={i}
-                  className="flex gap-6 relative group"
-                  style={{
-                    opacity: visibleSteps[i] ? 1 : 0,
-                    transform: visibleSteps[i] ? 'translateY(0)' : 'translateY(24px)',
-                    transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1)',
-                  }}
-                >
+              {steps.map((step, i) => {
+                const isVisible = i < revealedCount
+                return (
                   <div
-                    className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 z-10 transition-all duration-300 group-hover:border-[rgba(229,192,123,0.35)] group-hover:shadow-[0_0_16px_rgba(229,192,123,0.12)]"
-                    style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
+                    key={i}
+                    className="flex gap-6 relative group"
+                    style={{
+                      opacity: isVisible ? 1 : 0,
+                      transform: isVisible ? 'translateY(0)' : 'translateY(18px)',
+                      filter: isVisible ? 'blur(0px)' : 'blur(3px)',
+                      transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1), filter 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
                   >
-                    <span className="font-mono text-[11px] tracking-wider" style={{ color: '#E5C07B' }}>
-                      {step.num}
-                    </span>
+                    <div
+                      className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 z-10 transition-all duration-300 group-hover:border-[rgba(229,192,123,0.35)] group-hover:shadow-[0_0_16px_rgba(229,192,123,0.12)]"
+                      style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
+                    >
+                      <span className="font-mono text-[11px] tracking-wider" style={{ color: '#E5C07B' }}>
+                        {step.num}
+                      </span>
+                    </div>
+                    <div className="pt-2">
+                      <h3 className="font-semibold text-[16px] mb-2 tracking-[-0.01em]" style={{ color: '#EDEDEF' }}>
+                        {step.title}
+                      </h3>
+                      <p className="text-[14px] leading-[1.65]" style={{ color: '#6A6A70' }}>
+                        {step.desc}
+                      </p>
+                    </div>
                   </div>
-                  <div className="pt-2">
-                    <h3 className="font-semibold text-[16px] mb-2 tracking-[-0.01em]" style={{ color: '#EDEDEF' }}>
-                      {step.title}
-                    </h3>
-                    <p className="text-[14px] leading-[1.65]" style={{ color: '#6A6A70' }}>
-                      {step.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
