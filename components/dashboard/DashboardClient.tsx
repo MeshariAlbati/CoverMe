@@ -185,24 +185,38 @@ function StatCard({
   label,
   value,
   helper,
+  index = 0,
+  visible = true,
 }: {
   label: string
   value: string
   helper?: string
+  index?: number
+  visible?: boolean
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
-      className="rounded-lg border p-4"
-      style={{ backgroundColor: '#111113', borderColor: '#222228' }}
+      className="rounded-lg border p-4 transition-all duration-300"
+      style={{
+        backgroundColor: hovered ? '#161619' : '#111113',
+        borderColor: hovered ? 'rgba(229, 192, 123, 0.18)' : '#222228',
+        boxShadow: hovered ? '0 0 18px rgba(229, 192, 123, 0.06), 0 4px 16px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.2)',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(16px)',
+        transition: `opacity 500ms cubic-bezier(0.16,1,0.3,1) ${index * 60}ms, transform 500ms cubic-bezier(0.16,1,0.3,1) ${index * 60}ms, background-color 200ms, border-color 200ms, box-shadow 200ms`,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <p className="font-mono text-[11px] tracking-wider uppercase" style={{ color: '#555559' }}>
         {label}
       </p>
-      <p className="text-[24px] leading-none mt-2 font-serif" style={{ color: '#EDEDEF' }}>
+      <p className="text-[26px] leading-none mt-2 font-serif" style={{ color: '#EDEDEF' }}>
         {value}
       </p>
       {helper && (
-        <p className="text-[12px] mt-1" style={{ color: '#555559' }}>
+        <p className="text-[11px] mt-1.5" style={{ color: '#3D3D42' }}>
           {helper}
         </p>
       )}
@@ -219,6 +233,9 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
   const [error, setError] = useState<string | null>(null)
   const [coverLetters, setCoverLetters] = useState<CoverLetter[]>(normalizeCoverLetters(initialCoverLetters))
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
+  const [statsMounted, setStatsMounted] = useState(false)
+  const [celebration, setCelebration] = useState<{ company: string; key: number } | null>(null)
+  const [rejection, setRejection] = useState<{ company: string; key: number } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -251,6 +268,43 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
   }, [coverLetters])
 
   useEffect(() => {
+    const t = setTimeout(() => setStatsMounted(true), 120)
+    return () => clearTimeout(t)
+  }, [])
+
+  useEffect(() => {
+    if (!celebration) return
+    const t = setTimeout(() => setCelebration(null), 4600)
+    return () => clearTimeout(t)
+  }, [celebration])
+
+  useEffect(() => {
+    if (!rejection) return
+    const t = setTimeout(() => setRejection(null), 5600)
+    return () => clearTimeout(t)
+  }, [rejection])
+
+  useEffect(() => {
+    if (!rejection) return
+    document.body.style.filter = 'grayscale(0.92) brightness(0.82)'
+    document.body.style.transition = 'filter 0.4s ease'
+    const t1 = setTimeout(() => {
+      document.body.style.filter = 'grayscale(0) brightness(1)'
+      document.body.style.transition = 'filter 2s ease'
+    }, 1400)
+    const t2 = setTimeout(() => {
+      document.body.style.filter = ''
+      document.body.style.transition = ''
+    }, 3600)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      document.body.style.filter = ''
+      document.body.style.transition = ''
+    }
+  }, [rejection])
+
+  useEffect(() => {
     const stored = window.localStorage.getItem(GENERATION_PROVIDER_STORAGE_KEY)
     if (stored === 'groq') {
       setLlmProvider('groq')
@@ -263,7 +317,7 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
     window.localStorage.setItem(GENERATION_PROVIDER_STORAGE_KEY, llmProvider)
   }, [llmProvider])
 
-  async function handleGenerate(e: React.FormEvent) {
+  async function handleGenerate(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!companyName.trim()) return
 
@@ -359,6 +413,12 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
         const payload = await res.json().catch(() => null)
         throw new Error((payload as { error?: string } | null)?.error || 'Failed to update status')
       }
+
+      if (status === 'accepted') {
+        setCelebration({ company: current.company_name, key: Date.now() })
+      } else if (status === 'rejected') {
+        setRejection({ company: current.company_name, key: Date.now() })
+      }
     } catch (err) {
       setCoverLetters((prev) => prev.map((cl) => {
         if (cl.id !== id) return cl
@@ -372,21 +432,98 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
 
   return (
     <>
+      {celebration && (
+        <div key={celebration.key}>
+          {/* Screen flash */}
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9997, pointerEvents: 'none',
+              backgroundColor: 'rgba(229, 192, 123, 0.09)',
+              animation: 'accepted-flash 0.8s ease-out forwards',
+            }}
+          />
+          {/* Confetti canvas */}
+          <ConfettiBurst />
+          {/* Toast */}
+          <div
+            style={{
+              position: 'fixed', top: '28px', left: '50%',
+              zIndex: 10000, pointerEvents: 'none',
+              animation: 'accepted-toast-anim 4.6s ease forwards',
+              backgroundColor: '#111113',
+              border: '1px solid rgba(229, 192, 123, 0.5)',
+              borderRadius: '12px',
+              padding: '14px 22px',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              boxShadow: '0 0 40px rgba(229,192,123,0.22), 0 0 80px rgba(229,192,123,0.08), 0 8px 32px rgba(0,0,0,0.55)',
+              fontSize: '14px', fontWeight: 500, color: '#EDEDEF',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>🎉</span>
+            <span>
+              Congratulations!{' '}
+              <strong style={{ color: '#E5C07B' }}>{celebration.company}</strong>{' '}
+              wants you!
+            </span>
+          </div>
+        </div>
+      )}
+      {rejection && (
+        <div key={rejection.key}>
+          {/* Edge vignette */}
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9997, pointerEvents: 'none',
+              background: 'radial-gradient(ellipse at center, transparent 25%, rgba(0,0,0,0.88) 100%)',
+              animation: 'rejected-vignette 3.5s ease forwards',
+            }}
+          />
+          {/* Toast */}
+          <div
+            style={{
+              position: 'fixed', top: '28px', left: '50%',
+              zIndex: 10000, pointerEvents: 'none',
+              animation: 'rejected-toast-anim 7s ease forwards',
+              backgroundColor: '#111113',
+              border: '1px solid rgba(224, 108, 117, 0.35)',
+              borderRadius: '12px',
+              padding: '14px 22px',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              boxShadow: '0 0 30px rgba(224,108,117,0.12), 0 0 60px rgba(224,108,117,0.05), 0 8px 32px rgba(0,0,0,0.55)',
+              fontSize: '14px', fontWeight: 500, color: '#EDEDEF',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>💪</span>
+            <span>Keep going — the right opportunity is coming!</span>
+          </div>
+        </div>
+      )}
       <AppNavbar />
       <div
         className="min-h-screen"
-        style={{ backgroundColor: '#0A0A0B' }}
+        style={{
+          backgroundColor: '#0A0A0B',
+          backgroundImage: 'radial-gradient(ellipse 70% 35% at 50% 0%, rgba(229,192,123,0.045) 0%, transparent 65%), radial-gradient(ellipse 40% 20% at 80% 80%, rgba(97,175,239,0.025) 0%, transparent 60%)',
+        }}
       >
         <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10 space-y-10">
 
           <div className="animate-fade-up">
             <h1
-              className="font-serif text-[32px] leading-tight tracking-[-0.02em] mb-1"
-              style={{ color: '#EDEDEF' }}
+              className="font-serif text-[34px] leading-tight tracking-[-0.02em] mb-1"
+              style={{
+                background: 'linear-gradient(130deg, #EDEDEF 55%, #E5C07B 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                filter: 'drop-shadow(0 0 24px rgba(229, 192, 123, 0.18))',
+              }}
             >
               {profile?.full_name ? `${profile.full_name.split(' ')[0]}'s workspace` : 'Dashboard'}
             </h1>
-            <p className="text-[14px]" style={{ color: '#555559' }}>
+            <p className="text-[14px]" style={{ color: '#4A4A50' }}>
               Generate a cover letter for any company below
             </p>
           </div>
@@ -421,10 +558,16 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
           )}
 
           <div
-            className="rounded-lg border p-6 animate-fade-up"
-            style={{ backgroundColor: '#111113', borderColor: '#222228', animationDelay: '0.05s', animationFillMode: 'both' }}
+            className="rounded-xl border p-7 animate-fade-up"
+            style={{
+              backgroundColor: '#111113',
+              borderColor: 'rgba(229, 192, 123, 0.2)',
+              boxShadow: '0 0 0 1px rgba(229,192,123,0.06), 0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(229,192,123,0.06)',
+              animationDelay: '0.05s',
+              animationFillMode: 'both',
+            }}
           >
-            <p className="text-[12px] font-mono tracking-wider uppercase mb-4" style={{ color: '#555559' }}>
+            <p className="text-[11px] font-mono tracking-[0.12em] uppercase mb-5" style={{ color: '#555559' }}>
               New cover letter
             </p>
             <div className="mb-4 flex items-center gap-3">
@@ -520,25 +663,30 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
           </div>
 
           <div className="animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'both' }}>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[16px] font-semibold" style={{ color: '#EDEDEF' }}>
-                Application Tracking
-              </h2>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-[17px] font-semibold tracking-[-0.01em]" style={{ color: '#EDEDEF' }}>
+                  Application Tracking
+                </h2>
+                <p className="text-[12px] mt-0.5" style={{ color: '#3D3D42' }}>
+                  Monitor your application pipeline
+                </p>
+              </div>
               <span
-                className="font-mono text-[12px] px-2 py-0.5 rounded border"
+                className="font-mono text-[12px] px-2.5 py-1 rounded-md border"
                 style={{ color: '#555559', borderColor: '#222228', backgroundColor: '#111113' }}
               >
-                {coverLetters.length}
+                {coverLetters.length} {coverLetters.length === 1 ? 'letter' : 'letters'}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-4">
-              <StatCard label="Total Letters" value={String(coverLetters.length)} />
-              <StatCard label="Applied" value={String(analytics.counts.applied)} />
-              <StatCard label="Interviews" value={String(analytics.counts.interview)} />
-              <StatCard label="Accepted" value={String(analytics.counts.accepted)} />
-              <StatCard label="Interview Rate" value={analytics.interviewRate} helper="Interviews from submitted" />
-              <StatCard label="Acceptance Rate" value={analytics.acceptanceRate} helper="Accepted from submitted" />
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
+              <StatCard label="Total" value={String(coverLetters.length)} index={0} visible={statsMounted} />
+              <StatCard label="Applied" value={String(analytics.counts.applied)} index={1} visible={statsMounted} />
+              <StatCard label="Interviews" value={String(analytics.counts.interview)} index={2} visible={statsMounted} />
+              <StatCard label="Accepted" value={String(analytics.counts.accepted)} index={3} visible={statsMounted} />
+              <StatCard label="Interview Rate" value={analytics.interviewRate} helper="From submitted" index={4} visible={statsMounted} />
+              <StatCard label="Acceptance Rate" value={analytics.acceptanceRate} helper="From submitted" index={5} visible={statsMounted} />
             </div>
 
             {coverLetters.length === 0 ? (
@@ -558,11 +706,15 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
               </div>
             ) : (
               <div
-                className="rounded-lg border overflow-hidden"
-                style={{ backgroundColor: '#111113', borderColor: '#222228' }}
+                className="rounded-xl border overflow-hidden"
+                style={{
+                  backgroundColor: '#111113',
+                  borderColor: '#222228',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+                }}
               >
                 <div
-                  className="hidden md:grid grid-cols-[1.15fr_2fr_1fr_0.9fr_0.9fr] gap-4 px-4 py-3 border-b"
+                  className="hidden md:grid grid-cols-[1.15fr_2fr_1fr_0.9fr_0.9fr] gap-4 px-5 py-3 border-b"
                   style={{ borderColor: '#222228' }}
                 >
                   <p className="font-mono text-[11px] uppercase tracking-wider" style={{ color: '#555559' }}>Company</p>
@@ -591,6 +743,76 @@ export default function DashboardClient({ profile, initialCoverLetters }: Props)
   )
 }
 
+function ConfettiBurst() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const W = window.innerWidth
+    const H = window.innerHeight
+    canvas.width = W
+    canvas.height = H
+
+    const COLORS = ['#E5C07B', '#FFD700', '#7EC699', '#61AFEF', '#C678DD', '#FFFFFF', '#E06C75', '#FFC0CB', '#98FB98']
+    const particles = Array.from({ length: 140 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * -H * 0.6 - 10,
+      vx: (Math.random() - 0.5) * 5.5,
+      vy: Math.random() * 3.5 + 1.5,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      w: Math.random() * 10 + 4,
+      h: Math.random() * 4 + 2,
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.16,
+      alpha: 1,
+    }))
+
+    const start = performance.now()
+    let raf: number
+
+    const tick = (now: number) => {
+      const t = now - start
+      ctx.clearRect(0, 0, W, H)
+      let alive = false
+
+      for (const p of particles) {
+        p.x += p.vx
+        p.y += p.vy
+        p.vy += 0.07
+        p.rot += p.rotV
+        if (t > 2800) p.alpha = Math.max(0, p.alpha - 0.018)
+        if (p.y < H + 30 && p.alpha > 0) alive = true
+
+        ctx.save()
+        ctx.globalAlpha = p.alpha
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rot)
+        ctx.fillStyle = p.color
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+        ctx.restore()
+      }
+
+      if (alive && t < 4600) {
+        raf = requestAnimationFrame(tick)
+      }
+    }
+
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 9998 }}
+    />
+  )
+}
+
 function CoverLetterRow({
   coverLetter,
   onDelete,
@@ -616,17 +838,20 @@ function CoverLetterRow({
 
   return (
     <div
-      className="px-4 py-4 border-t transition-colors cursor-pointer"
+      className="px-5 py-4 border-t cursor-pointer"
       style={{
         borderColor: '#1A1A1F',
         animation: `card-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.04}s both`,
+        transition: 'background-color 180ms ease, box-shadow 180ms ease',
       }}
       onClick={() => router.push(`/generate/${coverLetter.id}`)}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = '#151518'
+        e.currentTarget.style.backgroundColor = '#15151A'
+        e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(229,192,123,0.06)'
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = 'transparent'
+        e.currentTarget.style.boxShadow = 'none'
       }}
     >
       <div className="grid grid-cols-1 md:grid-cols-[1.15fr_2fr_1fr_0.9fr_0.9fr] gap-3 md:gap-4">
@@ -666,6 +891,11 @@ function CoverLetterRow({
               backgroundColor: statusMeta.backgroundColor,
               cursor: statusUpdating ? 'not-allowed' : 'pointer',
               opacity: statusUpdating ? 0.6 : 1,
+              animation: status === 'accepted'
+                ? 'accepted-badge-pulse 2.5s ease-in-out infinite'
+                : status === 'rejected'
+                ? 'rejected-badge-pulse 2.5s ease-in-out infinite'
+                : 'none',
             }}
           >
             {APPLICATION_STATUSES.map((value) => (

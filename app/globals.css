@@ -129,6 +129,86 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 1; transform: translateX(0);     }
+}
+
+@keyframes celebration-pop {
+  0%   { opacity: 0; transform: scale(0.65); }
+  65%  { transform: scale(1.06);             }
+  100% { opacity: 1; transform: scale(1);    }
+}
+
+@keyframes progress-fill {
+  from { width: 0%; }
+}
+
+@keyframes orb-drift-1 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  25%  { transform: translate(55px, -45px) scale(1.04); }
+  55%  { transform: translate(-35px, 60px) scale(0.97); }
+  80%  { transform: translate(40px, 30px) scale(1.02); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes orb-drift-2 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  30%  { transform: translate(-60px, 40px) scale(1.05); }
+  60%  { transform: translate(45px, -55px) scale(0.96); }
+  85%  { transform: translate(-20px, -20px) scale(1.03); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes orb-drift-3 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  40%  { transform: translate(30px, 50px) scale(1.06); }
+  70%  { transform: translate(-50px, -30px) scale(0.95); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes accepted-toast-anim {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.95); }
+  8%   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  78%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.97); }
+}
+
+@keyframes accepted-flash {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes accepted-badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(229, 192, 123, 0), 0 0 0 0 rgba(126, 198, 153, 0); }
+  50%       { box-shadow: 0 0 10px 3px rgba(229, 192, 123, 0.3), 0 0 22px 5px rgba(126, 198, 153, 0.15); }
+}
+
+@keyframes rejected-toast-anim {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.97); }
+  2%   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  88%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-3px) scale(0.99); }
+}
+
+@keyframes rejected-vignette {
+  0%   { opacity: 0; }
+  12%  { opacity: 1; }
+  65%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes rejected-badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 108, 117, 0); }
+  50%       { box-shadow: 0 0 8px 2px rgba(224, 108, 117, 0.28), 0 0 18px 4px rgba(224, 108, 117, 0.1); }
+}
+
 @keyframes landing-cta-border-spin {
   from { transform: translate(-50%, -50%) rotate(0deg); }
   to { transform: translate(-50%, -50%) rotate(360deg); }

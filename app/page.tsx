@@ -61,18 +61,28 @@ function TypewriterHero() {
         }}
       />
 
-      {/* Ambient glow */}
+      {/* Ambient glows */}
       <div
-        className="absolute right-[10%] top-[20%] w-[500px] h-[500px] rounded-full pointer-events-none z-10"
-        style={{
-          background: 'radial-gradient(circle, rgba(229,192,123,0.05) 0%, transparent 70%)',
-        }}
+        className="absolute right-[8%] top-[18%] w-[600px] h-[600px] rounded-full pointer-events-none z-10"
+        style={{ background: 'radial-gradient(circle, rgba(229,192,123,0.06) 0%, transparent 68%)' }}
+      />
+      <div
+        className="absolute left-[2%] bottom-[10%] w-[420px] h-[420px] rounded-full pointer-events-none z-10"
+        style={{ background: 'radial-gradient(circle, rgba(97,175,239,0.03) 0%, transparent 70%)' }}
       />
 
       <div className="relative z-20 max-w-[1100px] mx-auto w-full grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-16 items-center py-24">
         {/* Left: Headline + CTA */}
         <div>
-          <p className="font-mono text-xs tracking-[0.12em] uppercase text-muted-foreground mb-8">
+          <p
+            className="font-mono text-xs tracking-[0.14em] uppercase mb-8"
+            style={{
+              background: 'linear-gradient(90deg, #E5C07B 0%, rgba(229,192,123,0.55) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
             AI Cover Letter Generator
           </p>
           <h1
@@ -91,9 +101,6 @@ function TypewriterHero() {
                 style={{ animation: 'typewriter-cursor 0.8s step-end infinite' }}
               />
             )}
-            {done && showUnderline && (
-              <></>
-            )}
           </h1>
           {showUnderline && (
             <div
@@ -107,7 +114,7 @@ function TypewriterHero() {
               }}
             />
           )}
-          <p className="text-[17px] leading-[1.6] mb-10" style={{ color: '#8A8A8E' }}>
+          <p className="text-[17px] leading-[1.65] mb-10" style={{ color: '#6A6A70' }}>
             Enter a company name. Get a letter that actually sounds like you.
           </p>
           <Link href="/signup" className="landing-cta-btn" aria-label="Get started">
@@ -123,11 +130,15 @@ function TypewriterHero() {
 
         {/* Right: Mock generation card */}
         <div
-          className="rounded-lg border overflow-hidden"
-          style={{ backgroundColor: '#111113', borderColor: '#222228' }}
+          className="rounded-xl border overflow-hidden"
+          style={{
+            backgroundColor: '#111113',
+            borderColor: 'rgba(229, 192, 123, 0.18)',
+            boxShadow: '0 0 0 1px rgba(229,192,123,0.05), 0 12px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(229,192,123,0.06)',
+          }}
         >
           {/* Card header - pipeline steps */}
-          <div className="px-5 py-4 border-b" style={{ borderColor: '#222228' }}>
+          <div className="px-5 py-4 border-b" style={{ borderColor: '#1E1E23' }}>
             <div className="space-y-2.5">
               {[
                 { label: 'Researching Anthropic', done: letterLines.length > 0, active: letterLines.length === 0 && done },
@@ -140,6 +151,7 @@ function TypewriterHero() {
                     style={{
                       borderColor: step.done ? '#7EC699' : step.active ? '#E5C07B' : '#333338',
                       backgroundColor: step.done ? 'rgba(126,198,153,0.1)' : step.active ? 'rgba(229,192,123,0.08)' : 'transparent',
+                      boxShadow: step.active ? '0 0 8px rgba(229,192,123,0.2)' : 'none',
                     }}
                   >
                     {step.done && (
@@ -154,7 +166,7 @@ function TypewriterHero() {
                   <span
                     className="font-mono text-[11px] transition-colors duration-500"
                     style={{
-                      color: step.done ? '#7EC699' : step.active ? '#E5C07B' : '#555559',
+                      color: step.done ? '#7EC699' : step.active ? '#E5C07B' : '#444448',
                     }}
                   >
                     {step.label}
@@ -172,7 +184,7 @@ function TypewriterHero() {
                   key={i}
                   className="font-serif text-[13px] leading-[1.7]"
                   style={{
-                    color: line === '' ? 'transparent' : '#8A8A8E',
+                    color: line === '' ? 'transparent' : '#7A7A80',
                     opacity: letterLines.includes(i) ? 1 : 0,
                     transform: letterLines.includes(i) ? 'translateY(0)' : 'translateY(10px)',
                     filter: letterLines.includes(i) ? 'blur(0px)' : 'blur(3px)',
@@ -210,15 +222,62 @@ function HowItWorks() {
     },
   ]
 
+  const [visibleLeft, setVisibleLeft] = useState(false)
+  const [visibleSteps, setVisibleSteps] = useState<boolean[]>([false, false, false])
+  const sectionRef = useRef<HTMLElement>(null)
+  const triggered = useRef(false)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true
+          setVisibleLeft(true)
+          steps.forEach((_, i) => {
+            setTimeout(() => {
+              setVisibleSteps(prev => {
+                const next = [...prev]
+                next[i] = true
+                return next
+              })
+            }, 100 + i * 200)
+          })
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.15 }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="py-24 px-6 sm:px-12 border-t" style={{ borderColor: '#222228' }}>
+    <section ref={sectionRef} className="py-28 px-6 sm:px-12 border-t" style={{ borderColor: '#1E1E23' }}>
       <div className="max-w-[1100px] mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-16 items-start">
-          <div>
-            <p className="font-mono text-xs tracking-[0.12em] uppercase mb-4" style={{ color: '#555559' }}>
+          <div
+            style={{
+              opacity: visibleLeft ? 1 : 0,
+              transform: visibleLeft ? 'translateY(0)' : 'translateY(20px)',
+              transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            <p className="font-mono text-xs tracking-[0.14em] uppercase mb-4" style={{ color: '#444448' }}>
               How it works
             </p>
-            <h2 className="font-serif text-[36px] leading-[1.15] tracking-[-0.02em]" style={{ color: '#EDEDEF' }}>
+            <h2
+              className="font-serif text-[38px] leading-[1.15] tracking-[-0.02em]"
+              style={{
+                background: 'linear-gradient(135deg, #EDEDEF 55%, #E5C07B 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
               Three steps.<br />One company name.
             </h2>
           </div>
@@ -227,14 +286,22 @@ function HowItWorks() {
             {/* Vertical connecting line */}
             <div
               className="absolute left-[19px] top-6 bottom-6 w-px"
-              style={{ backgroundColor: '#222228' }}
+              style={{ background: 'linear-gradient(180deg, #222228 0%, rgba(34,34,40,0.2) 100%)' }}
             />
 
             <div className="space-y-10">
               {steps.map((step, i) => (
-                <div key={i} className="flex gap-6 relative animate-fade-up" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'both' }}>
+                <div
+                  key={i}
+                  className="flex gap-6 relative group"
+                  style={{
+                    opacity: visibleSteps[i] ? 1 : 0,
+                    transform: visibleSteps[i] ? 'translateY(0)' : 'translateY(24px)',
+                    transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                >
                   <div
-                    className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 z-10"
+                    className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 z-10 transition-all duration-300 group-hover:border-[rgba(229,192,123,0.35)] group-hover:shadow-[0_0_16px_rgba(229,192,123,0.12)]"
                     style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
                   >
                     <span className="font-mono text-[11px] tracking-wider" style={{ color: '#E5C07B' }}>
@@ -242,10 +309,10 @@ function HowItWorks() {
                     </span>
                   </div>
                   <div className="pt-2">
-                    <h3 className="font-semibold text-[16px] mb-2" style={{ color: '#EDEDEF' }}>
+                    <h3 className="font-semibold text-[16px] mb-2 tracking-[-0.01em]" style={{ color: '#EDEDEF' }}>
                       {step.title}
                     </h3>
-                    <p className="text-[14px] leading-[1.6]" style={{ color: '#8A8A8E' }}>
+                    <p className="text-[14px] leading-[1.65]" style={{ color: '#6A6A70' }}>
                       {step.desc}
                     </p>
                   </div>
@@ -260,46 +327,95 @@ function HowItWorks() {
 }
 
 function Differentiator() {
+  const [visible, setVisible] = useState(false)
+  const sectionRef = useRef<HTMLElement>(null)
+  const triggered = useRef(false)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="py-24 px-6 sm:px-12 border-t" style={{ borderColor: '#222228' }}>
+    <section ref={sectionRef} className="py-28 px-6 sm:px-12 border-t" style={{ borderColor: '#1E1E23' }}>
       <div className="max-w-[1100px] mx-auto">
         <h2
-          className="font-serif text-[42px] sm:text-[52px] leading-[1.15] tracking-[-0.02em] mb-10 max-w-[700px]"
-          style={{ color: '#EDEDEF' }}
+          className="font-serif text-[42px] sm:text-[52px] leading-[1.15] tracking-[-0.02em] mb-12 max-w-[700px]"
+          style={{
+            background: 'linear-gradient(130deg, #EDEDEF 60%, #E5C07B 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'opacity 650ms cubic-bezier(0.16, 1, 0.3, 1), transform 650ms cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
         >
           Not another AI template generator.
         </h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          <div className="space-y-5">
-            <p className="text-[15px] leading-[1.7]" style={{ color: '#8A8A8E' }}>
+          <div
+            className="space-y-5"
+            style={{
+              opacity: visible ? 1 : 0,
+              transform: visible ? 'translateY(0)' : 'translateY(20px)',
+              transition: 'opacity 650ms cubic-bezier(0.16, 1, 0.3, 1) 100ms, transform 650ms cubic-bezier(0.16, 1, 0.3, 1) 100ms',
+            }}
+          >
+            <p className="text-[15px] leading-[1.75]" style={{ color: '#6A6A70' }}>
               Most AI cover letter tools take your resume, take the job description, and produce a generic summary that sounds exactly like every other application. Hiring managers can tell.
             </p>
-            <p className="text-[15px] leading-[1.7]" style={{ color: '#8A8A8E' }}>
+            <p className="text-[15px] leading-[1.75]" style={{ color: '#6A6A70' }}>
               CoverMe runs a live research pass on the company before writing a single word. It looks at their mission, culture signals, growth areas, and recent news — then matches that against your actual skills and experience to find the most compelling angle.
             </p>
-            <p className="text-[15px] leading-[1.7]" style={{ color: '#8A8A8E' }}>
+            <p className="text-[15px] leading-[1.75]" style={{ color: '#6A6A70' }}>
               The result is a letter that references specific company details, connects your real achievements to their actual needs, and reads like something a thoughtful human wrote — because the AI had real information to work with.
             </p>
           </div>
 
           {/* Comparison */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+            style={{
+              opacity: visible ? 1 : 0,
+              transform: visible ? 'translateY(0)' : 'translateY(20px)',
+              transition: 'opacity 650ms cubic-bezier(0.16, 1, 0.3, 1) 200ms, transform 650ms cubic-bezier(0.16, 1, 0.3, 1) 200ms',
+            }}
+          >
             <div
-              className="rounded-lg border p-4"
-              style={{ backgroundColor: '#111113', borderColor: '#222228' }}
+              className="rounded-xl border p-5"
+              style={{
+                backgroundColor: '#111113',
+                borderColor: '#222228',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
+              }}
             >
-              <p className="font-mono text-[11px] tracking-wider uppercase mb-3" style={{ color: '#555559' }}>
+              <p className="font-mono text-[11px] tracking-[0.12em] uppercase mb-4" style={{ color: '#444448' }}>
                 Generic AI
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {[
                   '"I am excited about this opportunity..."',
                   '"My skills align perfectly with..."',
                   '"I am a fast learner who works well..."',
                   '"I look forward to discussing..."',
                 ].map((line, i) => (
-                  <p key={i} className="text-[12px] leading-[1.5] line-through" style={{ color: '#555559' }}>
+                  <p key={i} className="text-[12px] leading-[1.55] line-through" style={{ color: '#3D3D42' }}>
                     {line}
                   </p>
                 ))}
@@ -307,19 +423,23 @@ function Differentiator() {
             </div>
 
             <div
-              className="rounded-lg border p-4"
-              style={{ backgroundColor: '#111113', borderColor: '#E5C07B', borderWidth: '1px' }}
+              className="rounded-xl border p-5"
+              style={{
+                backgroundColor: '#111113',
+                borderColor: 'rgba(229,192,123,0.25)',
+                boxShadow: '0 0 0 1px rgba(229,192,123,0.06), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(229,192,123,0.06)',
+              }}
             >
-              <p className="font-mono text-[11px] tracking-wider uppercase mb-3" style={{ color: '#E5C07B' }}>
+              <p className="font-mono text-[11px] tracking-[0.12em] uppercase mb-4" style={{ color: '#E5C07B' }}>
                 CoverMe
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {[
                   '"Your Constitutional AI work is the most credible approach I\'ve seen..."',
                   '"My pipeline optimization at Stripe reduced latency by 34%..."',
                   '"Your recent Series C signals a scaling phase where I\'ve thrived..."',
                 ].map((line, i) => (
-                  <p key={i} className="text-[12px] leading-[1.5]" style={{ color: '#8A8A8E' }}>
+                  <p key={i} className="text-[12px] leading-[1.55]" style={{ color: '#8A8A8E' }}>
                     {line}
                   </p>
                 ))}
@@ -333,21 +453,74 @@ function Differentiator() {
 }
 
 function FinalCTA() {
+  const [visible, setVisible] = useState(false)
+  const sectionRef = useRef<HTMLElement>(null)
+  const triggered = useRef(false)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.2 }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="py-24 px-6 sm:px-12 border-t" style={{ borderColor: '#222228' }}>
+    <section ref={sectionRef} className="py-28 px-6 sm:px-12 border-t" style={{ borderColor: '#1E1E23' }}>
       <div className="max-w-[1100px] mx-auto">
-        <p className="text-[15px] mb-6" style={{ color: '#8A8A8E' }}>
-          Ready to stop writing cover letters from scratch?
+        <p
+          className="text-[15px] mb-3 font-mono tracking-[0.08em] uppercase"
+          style={{
+            color: '#444448',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(16px)',
+            transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          Ready?
         </p>
-        <Link href="/signup" className="landing-gradient-lift-btn" aria-label="Create your free account">
-          <span className="landing-gradient-lift-btn__inner">
-            Create your free account
-            <svg className="landing-gradient-lift-btn__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </span>
-        </Link>
+        <h2
+          className="font-serif text-[36px] sm:text-[44px] leading-[1.15] tracking-[-0.02em] mb-10 max-w-[560px]"
+          style={{
+            background: 'linear-gradient(130deg, #EDEDEF 55%, #E5C07B 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(16px)',
+            transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1) 80ms, transform 600ms cubic-bezier(0.16, 1, 0.3, 1) 80ms',
+          }}
+        >
+          Stop writing cover letters from scratch.
+        </h2>
+        <div
+          style={{
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(16px)',
+            transition: 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1) 160ms, transform 600ms cubic-bezier(0.16, 1, 0.3, 1) 160ms',
+          }}
+        >
+          <Link href="/signup" className="landing-gradient-lift-btn" aria-label="Create your free account">
+            <span className="landing-gradient-lift-btn__inner">
+              Create your free account
+              <svg className="landing-gradient-lift-btn__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </span>
+          </Link>
+        </div>
       </div>
     </section>
   )
@@ -355,11 +528,18 @@ function FinalCTA() {
 
 export default function LandingPage() {
   return (
-    <div style={{ backgroundColor: '#0A0A0B', minHeight: '100vh' }}>
+    <div style={{
+      backgroundColor: '#0A0A0B',
+      minHeight: '100vh',
+      backgroundImage: [
+        'radial-gradient(ellipse 70% 40% at 50% 28%, rgba(229,192,123,0.07) 0%, transparent 65%)',
+        'radial-gradient(ellipse 50% 30% at 75% 65%, rgba(97,175,239,0.04) 0%, transparent 60%)',
+      ].join(', '),
+    }}>
       {/* Navbar */}
       <nav
-        className="sticky top-0 z-50 border-b"
-        style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
+        className="sticky top-0 z-50 border-b backdrop-blur-md"
+        style={{ backgroundColor: 'rgba(10,10,11,0.85)', borderColor: '#1E1E23' }}
       >
         <div className="max-w-[1100px] mx-auto px-6 sm:px-12 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-baseline gap-[2px]">
@@ -369,13 +549,13 @@ export default function LandingPage() {
           <div className="flex items-center gap-6">
             <Link
               href="/login"
-              className="text-[13px] font-medium transition-colors"
-              style={{ color: '#8A8A8E' }}
+              className="text-[13px] font-medium transition-colors duration-200"
+              style={{ color: '#6A6A70' }}
               onMouseEnter={e => {
                 (e.target as HTMLElement).style.color = '#EDEDEF'
               }}
               onMouseLeave={e => {
-                (e.target as HTMLElement).style.color = '#8A8A8E'
+                (e.target as HTMLElement).style.color = '#6A6A70'
               }}
             >
               Sign in
@@ -391,14 +571,14 @@ export default function LandingPage() {
 
       <footer
         className="border-t px-6 sm:px-12 py-8"
-        style={{ borderColor: '#222228' }}
+        style={{ borderColor: '#1E1E23' }}
       >
         <div className="max-w-[1100px] mx-auto flex items-center justify-between">
           <div className="flex items-baseline gap-[2px]">
             <span className="font-serif text-[16px]" style={{ color: '#EDEDEF' }}>Cover</span>
             <span className="font-serif text-[16px]" style={{ color: '#E5C07B' }}>Me</span>
           </div>
-          <p className="font-mono text-[11px]" style={{ color: '#555559' }}>
+          <p className="font-mono text-[11px]" style={{ color: '#444448' }}>
             Created by Eng.Meshari • Contact: 0553323624
           </p>
         </div>

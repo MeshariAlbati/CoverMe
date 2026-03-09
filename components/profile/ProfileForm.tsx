@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Upload, Loader2, Plus, X, CheckCircle2, Save
+  Upload, Loader2, Plus, X, CheckCircle2, Save, ChevronRight, ChevronLeft
 } from 'lucide-react'
 import type { LLMProvider, Profile } from '@/types'
 import AppNavbar from '@/components/layout/AppNavbar'
@@ -59,6 +59,19 @@ interface Props {
 }
 
 const CV_PROVIDER_STORAGE_KEY = 'coverme.cv-provider'
+
+const TOTAL_STEPS = 9
+const STEP_LABELS = [
+  'Upload CV',
+  'Personal Info',
+  'Projects',
+  'Skills',
+  'Work Experience',
+  'Education',
+  'Preferences',
+  'Optional Extras',
+  'Review & Save',
+]
 
 // Shared input styles
 function DarkInput({ error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { error?: string }) {
@@ -112,18 +125,6 @@ function DarkTextarea({ error, ...props }: React.TextareaHTMLAttributes<HTMLText
   )
 }
 
-function SectionCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border" style={{ backgroundColor: '#111113', borderColor: '#222228' }}>
-      <div className="px-6 py-5 border-b" style={{ borderColor: '#1A1A1F' }}>
-        <h2 className="text-[15px] font-semibold" style={{ color: '#EDEDEF' }}>{title}</h2>
-        {description && <p className="text-[13px] mt-0.5" style={{ color: '#8A8A8E' }}>{description}</p>}
-      </div>
-      <div className="p-6">{children}</div>
-    </div>
-  )
-}
-
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
     <label className="block text-[13px] font-medium mb-1.5" style={{ color: '#8A8A8E' }}>
@@ -135,6 +136,8 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 
 export default function ProfileForm({ initialProfile, userId, userEmail }: Props) {
   const router = useRouter()
+  const [currentStep, setCurrentStep] = useState(1)
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward')
   const [cvProvider, setCvProvider] = useState<LLMProvider>('claude')
   const [cvUploading, setCvUploading] = useState(false)
   const [cvFileName, setCvFileName] = useState<string | null>(null)
@@ -302,9 +305,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
     try {
       const response = await fetch('/api/github-projects', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ github_url: githubUrl }),
       })
 
@@ -315,11 +316,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
 
       const payload = await response.json() as {
         username: string
-        projects: Array<{
-          name: string
-          description: string
-          url?: string | null
-        }>
+        projects: Array<{ name: string; description: string; url?: string | null }>
       }
 
       const imported = (payload.projects || [])
@@ -399,607 +396,752 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
       setTimeout(() => {
         setSaveSuccess(false)
         router.push('/dashboard')
-      }, 1500)
+      }, 2200)
+    }
+  }
+
+  function goNext() {
+    setDirection('forward')
+    setCurrentStep(s => Math.min(s + 1, TOTAL_STEPS))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function goBack() {
+    setDirection('back')
+    setCurrentStep(s => Math.max(s - 1, 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const progressPct = ((currentStep - 1) / (TOTAL_STEPS - 1)) * 100
+
+  // ── Step content ────────────────────────────────────────────────────────────
+
+  function renderStepContent() {
+    switch (currentStep) {
+
+      // Step 1: Upload CV
+      case 1: return (
+        <div>
+          <StepHeading step={1} title="Upload your CV" subtitle="PDF only — we'll auto-fill everything below" />
+          <div className="mb-4 flex items-center gap-3">
+            <label className="text-[12px] font-mono tracking-wider uppercase" style={{ color: '#555559' }}>
+              AI Provider
+            </label>
+            <ProviderPicker
+              value={cvProvider}
+              onChange={setCvProvider}
+              disabled={cvUploading}
+              allowClaude
+            />
+          </div>
+          <div
+            className="border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-200"
+            style={{
+              borderColor: dragOver ? '#E5C07B' : cvFileName || initialProfile?.cv_url ? 'rgba(126, 198, 153, 0.4)' : '#222228',
+              backgroundColor: dragOver ? 'rgba(229, 192, 123, 0.04)' : cvFileName || initialProfile?.cv_url ? 'rgba(126, 198, 153, 0.04)' : '#111113',
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(false)
+              const file = e.dataTransfer.files[0]
+              if (file) handleFileUpload(file)
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleFileUpload(file)
+              }}
+            />
+            {cvUploading ? (
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-9 h-9 animate-spin" style={{ color: '#E5C07B' }} />
+                <p className="text-[15px] font-medium" style={{ color: '#E5C07B' }}>Analyzing your CV...</p>
+                <p className="text-[13px]" style={{ color: '#555559' }}>Extracting skills, experience, and education</p>
+              </div>
+            ) : cvFileName || initialProfile?.cv_url ? (
+              <div className="flex flex-col items-center gap-3">
+                <CheckCircle2 className="w-9 h-9" style={{ color: '#7EC699' }} />
+                <p className="text-[15px] font-medium" style={{ color: '#7EC699' }}>{cvFileName || 'CV uploaded'}</p>
+                <p className="text-[13px]" style={{ color: '#555559' }}>Click to upload a different file</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <Upload className="w-9 h-9" style={{ color: '#333338' }} />
+                <p className="text-[15px] font-medium" style={{ color: '#8A8A8E' }}>Drag & drop or click to upload</p>
+                <p className="text-[13px]" style={{ color: '#555559' }}>PDF only, max 10MB</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+
+      // Step 2: Personal Info
+      case 2: return (
+        <div>
+          <StepHeading step={2} title="Personal Information" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <FieldLabel required>Full Name</FieldLabel>
+              <DarkInput {...register('full_name')} placeholder="Jane Smith" error={errors.full_name?.message} />
+            </div>
+            <div>
+              <FieldLabel required>Email</FieldLabel>
+              <DarkInput type="email" {...register('email')} placeholder="jane@example.com" error={errors.email?.message} />
+            </div>
+            <div>
+              <FieldLabel>Phone</FieldLabel>
+              <DarkInput {...register('phone')} placeholder="+1 (555) 000-0000" />
+            </div>
+            <div>
+              <FieldLabel>Location</FieldLabel>
+              <DarkInput {...register('location')} placeholder="San Francisco, CA" />
+            </div>
+            <div>
+              <FieldLabel>LinkedIn URL</FieldLabel>
+              <DarkInput {...register('linkedin_url')} placeholder="linkedin.com/in/janesmith" />
+            </div>
+            <div>
+              <FieldLabel required>Current / Most Recent Title</FieldLabel>
+              <DarkInput {...register('job_title')} placeholder="Senior Software Engineer" error={errors.job_title?.message} />
+            </div>
+            <div>
+              <FieldLabel required>Years of Experience</FieldLabel>
+              <DarkInput type="number" min={0} max={50} {...register('years_of_experience')} className="w-24" />
+            </div>
+          </div>
+        </div>
+      )
+
+      // Step 3: Projects
+      case 3: return (
+        <div>
+          <StepHeading step={3} title="Projects" subtitle="Share your GitHub profile and add manual projects to strengthen your cover letters." />
+          <div className="grid grid-cols-1 gap-5">
+            <div>
+              <FieldLabel>GitHub Profile URL</FieldLabel>
+              <DarkInput {...register('github_url')} placeholder="github.com/janesmith" />
+              <p className="text-[12px] mt-1" style={{ color: '#555559' }}>
+                We read public repositories and use relevant projects in your letter.
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={importGithubProjects}
+                  disabled={githubImporting}
+                  className="h-9 px-4 rounded border text-[13px] font-medium transition-all duration-200 flex items-center gap-2"
+                  style={{
+                    borderColor: '#E5C07B',
+                    color: '#E5C07B',
+                    opacity: githubImporting ? 0.7 : 1,
+                    cursor: githubImporting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {githubImporting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" />Importing...</>
+                  ) : 'Import Projects'}
+                </button>
+                {githubImportMessage && (
+                  <p className="text-[12px]" style={{ color: '#8A8A8E' }}>{githubImportMessage}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+            <div>
+              <FieldLabel>Manual Projects</FieldLabel>
+              <p className="text-[12px] mb-3" style={{ color: '#555559' }}>
+                Add important projects with description if they are missing from GitHub parsing.
+              </p>
+              <div className="space-y-3">
+                {projectFields.map((field, index) => (
+                  <div key={field.id} className="p-4 rounded-lg border relative" style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}>
+                    <button
+                      type="button"
+                      onClick={() => removeProject(index)}
+                      className="absolute top-3 right-3 transition-colors"
+                      style={{ color: '#555559' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <FieldLabel>Project Name</FieldLabel>
+                        <DarkInput {...register(`manual_projects.${index}.name`)} placeholder="Distributed Payment Gateway" />
+                      </div>
+                      <div>
+                        <FieldLabel>Project Description</FieldLabel>
+                        <DarkTextarea
+                          {...register(`manual_projects.${index}.description`)}
+                          placeholder="Built a high-throughput payment service with retry logic and observability; reduced failed transactions by 22%."
+                          style={{ minHeight: '90px' }}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Project URL (Optional)</FieldLabel>
+                        <DarkInput {...register(`manual_projects.${index}.url`)} placeholder="https://github.com/username/project" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => appendProject({ name: '', description: '', url: '' })}
+                className="mt-3 w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
+                style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add manual project
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+
+      // Step 4: Skills
+      case 4: return (
+        <div>
+          <StepHeading step={4} title="Skills" subtitle="Add or edit your skills — drag from CV or type manually" />
+          <div className="flex gap-2 mb-4">
+            <input
+              value={skillInput}
+              onChange={(e) => setSkillInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSkill() } }}
+              placeholder="Type a skill and press Enter"
+              className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
+              style={{ backgroundColor: '#1A1A1F', border: '1px solid #222228', color: '#EDEDEF' }}
+              onFocus={e => { e.target.style.borderColor = '#E5C07B'; e.target.style.boxShadow = '0 0 0 2px rgba(229, 192, 123, 0.08)' }}
+              onBlur={e => { e.target.style.borderColor = '#222228'; e.target.style.boxShadow = 'none' }}
+            />
+            <button
+              type="button"
+              onClick={addSkill}
+              className="w-9 h-9 rounded border flex items-center justify-center transition-colors"
+              style={{ borderColor: '#222228', color: '#8A8A8E' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#E5C07B')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#222228')}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 min-h-[36px]">
+            {skills.map((skill) => (
+              <span
+                key={skill}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border animate-tag-pop"
+                style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}
+              >
+                {skill}
+                <button
+                  type="button"
+                  onClick={() => removeSkill(skill)}
+                  className="transition-colors"
+                  style={{ color: '#555559' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            {skills.length === 0 && (
+              <p className="text-[13px]" style={{ color: '#555559' }}>No skills added yet</p>
+            )}
+          </div>
+        </div>
+      )
+
+      // Step 5: Work Experience
+      case 5: return (
+        <div>
+          <StepHeading step={5} title="Work Experience" />
+          <div className="space-y-4">
+            {expFields.map((field, index) => (
+              <div key={field.id} className="p-4 rounded-lg border relative" style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}>
+                {expFields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeExp(index)}
+                    className="absolute top-3 right-3 transition-colors"
+                    style={{ color: '#555559' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <FieldLabel>Job Title</FieldLabel>
+                    <DarkInput {...register(`work_experience.${index}.title`)} placeholder="Software Engineer" />
+                  </div>
+                  <div>
+                    <FieldLabel>Company</FieldLabel>
+                    <DarkInput {...register(`work_experience.${index}.company`)} placeholder="Acme Corp" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <FieldLabel>Duration</FieldLabel>
+                    <DarkInput {...register(`work_experience.${index}.duration`)} placeholder="Jan 2022 – Present" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => appendExp({ title: '', company: '', duration: '', highlights: [] })}
+              className="w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
+              style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add position
+            </button>
+          </div>
+        </div>
+      )
+
+      // Step 6: Education
+      case 6: return (
+        <div>
+          <StepHeading step={6} title="Education" />
+          <div className="space-y-4">
+            {eduFields.map((field, index) => (
+              <div key={field.id} className="p-4 rounded-lg border relative" style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}>
+                {eduFields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeEdu(index)}
+                    className="absolute top-3 right-3 transition-colors"
+                    style={{ color: '#555559' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <FieldLabel>Degree</FieldLabel>
+                    <DarkInput {...register(`education.${index}.degree`)} placeholder="B.Sc. Computer Science" />
+                  </div>
+                  <div>
+                    <FieldLabel>Institution</FieldLabel>
+                    <DarkInput {...register(`education.${index}.institution`)} placeholder="MIT" />
+                  </div>
+                  <div>
+                    <FieldLabel>Year</FieldLabel>
+                    <DarkInput {...register(`education.${index}.year`)} placeholder="2022" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => appendEdu({ degree: '', institution: '', year: '' })}
+              className="w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
+              style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add degree
+            </button>
+          </div>
+        </div>
+      )
+
+      // Step 7: Preferences
+      case 7: return (
+        <div>
+          <StepHeading step={7} title="Your Preferences" subtitle="Help us write letters that sound like you" />
+          <div className="space-y-7">
+            <div>
+              <FieldLabel required>Preferred Tone</FieldLabel>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['formal', 'conversational', 'confident', 'balanced'] as const).map((tone) => (
+                  <button
+                    key={tone}
+                    type="button"
+                    onClick={() => setValue('preferred_tone', tone)}
+                    className="h-10 rounded border text-[13px] font-medium capitalize transition-all duration-150"
+                    style={{
+                      borderColor: preferred_tone === tone ? '#E5C07B' : '#222228',
+                      backgroundColor: preferred_tone === tone ? 'rgba(229, 192, 123, 0.08)' : 'transparent',
+                      color: preferred_tone === tone ? '#E5C07B' : '#8A8A8E',
+                    }}
+                  >
+                    {tone}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+            <div>
+              <FieldLabel required>Career Goal</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'same_field', label: 'Same field' },
+                  { value: 'career_change', label: 'Career change' },
+                  { value: 'promotion', label: 'Promotion level' },
+                  { value: 'freelance', label: 'Freelance / contract' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setValue('career_intent', value as ProfileFormData['career_intent'])}
+                    className="h-10 rounded border text-[13px] font-medium transition-all duration-150"
+                    style={{
+                      borderColor: career_intent === value ? '#E5C07B' : '#222228',
+                      backgroundColor: career_intent === value ? 'rgba(229, 192, 123, 0.08)' : 'transparent',
+                      color: career_intent === value ? '#E5C07B' : '#8A8A8E',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+            <div>
+              <FieldLabel required>What makes you unique beyond your resume?</FieldLabel>
+              <DarkTextarea
+                {...register('unique_value')}
+                placeholder="E.g., I bridge the gap between deep technical work and executive communication — I can architect a system and then explain it to a board."
+                error={errors.unique_value?.message}
+              />
+            </div>
+
+            <div>
+              <FieldLabel required>What&apos;s your proudest professional achievement?</FieldLabel>
+              <DarkTextarea
+                {...register('proudest_achievement')}
+                placeholder="E.g., I led a 3-person team to rebuild our checkout flow, cutting abandonment by 40% and adding $2M in annual revenue."
+                error={errors.proudest_achievement?.message}
+              />
+            </div>
+          </div>
+        </div>
+      )
+
+      // Step 8: Optional Extras
+      case 8: return (
+        <div>
+          <StepHeading step={8} title="Optional Extras" subtitle="Certifications, languages, framing notes" />
+          <div className="space-y-5">
+            <div>
+              <FieldLabel>Certifications</FieldLabel>
+              <div className="flex gap-2 mb-3">
+                <input
+                  value={certInput}
+                  onChange={(e) => setCertInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCert() } }}
+                  placeholder="AWS Certified, PMP, etc."
+                  className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
+                  style={{ backgroundColor: '#1A1A1F', border: '1px solid #222228', color: '#EDEDEF' }}
+                  onFocus={e => { e.target.style.borderColor = '#E5C07B' }}
+                  onBlur={e => { e.target.style.borderColor = '#222228' }}
+                />
+                <button type="button" onClick={addCert} className="w-9 h-9 rounded border flex items-center justify-center" style={{ borderColor: '#222228', color: '#8A8A8E' }}>
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {certifications.map((cert) => (
+                  <span key={cert} className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border" style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}>
+                    {cert}
+                    <button type="button" onClick={() => setValue('certifications', certifications.filter(c => c !== cert))} style={{ color: '#555559' }}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+            <div>
+              <FieldLabel>Languages</FieldLabel>
+              <div className="flex gap-2 mb-3">
+                <input
+                  value={langInput}
+                  onChange={(e) => setLangInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLang() } }}
+                  placeholder="English (native), Arabic (fluent)"
+                  className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
+                  style={{ backgroundColor: '#1A1A1F', border: '1px solid #222228', color: '#EDEDEF' }}
+                  onFocus={e => { e.target.style.borderColor = '#E5C07B' }}
+                  onBlur={e => { e.target.style.borderColor = '#222228' }}
+                />
+                <button type="button" onClick={addLang} className="w-9 h-9 rounded border flex items-center justify-center" style={{ borderColor: '#222228', color: '#8A8A8E' }}>
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {languages.map((lang) => (
+                  <span key={lang} className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border" style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}>
+                    {lang}
+                    <button type="button" onClick={() => setValue('languages', languages.filter(l => l !== lang))} style={{ color: '#555559' }}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
+
+            <div>
+              <FieldLabel>Anything to emphasize?</FieldLabel>
+              <DarkTextarea
+                {...register('things_to_emphasize')}
+                placeholder="E.g., Emphasize my startup experience and comfort with ambiguity"
+                style={{ minHeight: '80px' }}
+              />
+            </div>
+
+            <div>
+              <FieldLabel>Anything to downplay?</FieldLabel>
+              <DarkTextarea
+                {...register('things_to_downplay')}
+                placeholder="E.g., Don't focus on my time at Company X — it was a short stint"
+                style={{ minHeight: '80px' }}
+              />
+            </div>
+          </div>
+        </div>
+      )
+
+      // Step 9: Review & Save
+      case 9: return (
+        <div>
+          <StepHeading step={9} title="Review & Save" subtitle="Everything looks good? Save your profile to start generating cover letters." />
+          <div className="space-y-3">
+            {[
+              { label: 'CV', value: cvFileName || (initialProfile?.cv_url ? 'Uploaded' : 'Not uploaded') },
+              { label: 'Name', value: watch('full_name') || '—' },
+              { label: 'Email', value: watch('email') || '—' },
+              { label: 'Title', value: watch('job_title') || '—' },
+              { label: 'Skills', value: skills.length ? `${skills.length} added` : 'None' },
+              { label: 'Experience', value: expFields.length ? `${expFields.length} position${expFields.length > 1 ? 's' : ''}` : 'None' },
+              { label: 'Education', value: eduFields.length ? `${eduFields.length} degree${eduFields.length > 1 ? 's' : ''}` : 'None' },
+              { label: 'Projects', value: projectFields.length ? `${projectFields.length} project${projectFields.length > 1 ? 's' : ''}` : 'None' },
+              { label: 'Tone', value: watch('preferred_tone') || '—' },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                className="flex items-center justify-between px-4 py-3 rounded-lg border"
+                style={{ backgroundColor: '#111113', borderColor: '#1E1E23' }}
+              >
+                <span className="font-mono text-[11px] tracking-wider uppercase" style={{ color: '#555559' }}>{label}</span>
+                <span className="text-[13px]" style={{ color: '#EDEDEF' }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8">
+            <button
+              type="submit"
+              disabled={saving || saveSuccess}
+              className="w-full h-12 rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 transition-all duration-200"
+              style={{
+                backgroundColor: saveSuccess ? 'rgba(126, 198, 153, 0.15)' : '#E5C07B',
+                color: saveSuccess ? '#7EC699' : '#0A0A0B',
+                border: saveSuccess ? '1px solid rgba(126, 198, 153, 0.3)' : 'none',
+                opacity: (saving || saveSuccess) ? 0.8 : 1,
+                cursor: (saving || saveSuccess) ? 'not-allowed' : 'pointer',
+                boxShadow: saving || saveSuccess ? 'none' : '0 0 24px rgba(229,192,123,0.2)',
+              }}
+              onMouseEnter={e => { if (!saving && !saveSuccess) (e.currentTarget.style.backgroundColor = '#F0D08A') }}
+              onMouseLeave={e => { if (!saveSuccess) (e.currentTarget.style.backgroundColor = '#E5C07B') }}
+            >
+              {saving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
+              ) : saveSuccess ? (
+                <><CheckCircle2 className="w-4 h-4" />Saved!</>
+              ) : (
+                <><Save className="w-4 h-4" />Save Profile</>
+              )}
+            </button>
+          </div>
+        </div>
+      )
+
+      default: return null
     }
   }
 
   return (
     <>
       <AppNavbar />
-      <div className="min-h-screen" style={{ backgroundColor: '#0A0A0B' }}>
-        <div className="max-w-[760px] mx-auto px-6 sm:px-8 py-10">
 
-          <div className="mb-8 animate-fade-up">
-            <h1 className="font-serif text-[32px] tracking-[-0.02em] mb-1" style={{ color: '#EDEDEF' }}>
-              Your Profile
-            </h1>
+      {/* Completion celebration overlay */}
+      {saveSuccess && (
+        <div
+          className="fixed inset-0 flex items-center justify-center pointer-events-none"
+          style={{ zIndex: 100 }}
+        >
+          <div
+            style={{
+              animation: 'celebration-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              backgroundColor: '#111113',
+              border: '1px solid rgba(126,198,153,0.3)',
+              borderRadius: '20px',
+              padding: '40px 56px',
+              textAlign: 'center',
+              boxShadow: '0 0 60px rgba(126,198,153,0.15), 0 24px 64px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
+              style={{ backgroundColor: 'rgba(126,198,153,0.12)', border: '2px solid rgba(126,198,153,0.35)' }}
+            >
+              <CheckCircle2 className="w-8 h-8" style={{ color: '#7EC699' }} />
+            </div>
+            <p className="font-serif text-[24px] tracking-[-0.01em] mb-2" style={{ color: '#EDEDEF' }}>
+              Profile saved!
+            </p>
             <p className="text-[14px]" style={{ color: '#555559' }}>
-              Upload your CV and tell us about yourself. This powers every cover letter.
+              Taking you to the dashboard…
             </p>
           </div>
+        </div>
+      )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <div className="min-h-screen" style={{ backgroundColor: '#0A0A0B' }}>
+        <div className="max-w-[680px] mx-auto px-6 sm:px-8 py-10">
 
-            {/* CV Upload */}
-            <SectionCard title="Upload your CV" description="PDF only — we'll auto-fill everything below">
-              <div className="mb-4 flex items-center gap-3">
-                <label className="text-[12px] font-mono tracking-wider uppercase" style={{ color: '#555559' }}>
-                  AI Provider
-                </label>
-                <ProviderPicker
-                  value={cvProvider}
-                  onChange={setCvProvider}
-                  disabled={cvUploading}
-                  allowClaude
-                />
-              </div>
+          {/* Header */}
+          <div className="mb-8 animate-fade-up">
+            <p className="font-mono text-[11px] tracking-[0.14em] uppercase mb-3" style={{ color: '#555559' }}>
+              Step {currentStep} of {TOTAL_STEPS} — {STEP_LABELS[currentStep - 1]}
+            </p>
+            <h1 className="font-serif text-[30px] tracking-[-0.02em] mb-5" style={{ color: '#EDEDEF' }}>
+              Your Profile
+            </h1>
+
+            {/* Progress bar */}
+            <div className="relative h-[3px] rounded-full overflow-hidden" style={{ backgroundColor: '#1A1A1F' }}>
               <div
-                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all duration-200"
+                className="absolute left-0 top-0 h-full rounded-full"
                 style={{
-                  borderColor: dragOver ? '#E5C07B' : cvFileName || initialProfile?.cv_url ? 'rgba(126, 198, 153, 0.4)' : '#222228',
-                  backgroundColor: dragOver ? 'rgba(229, 192, 123, 0.04)' : cvFileName || initialProfile?.cv_url ? 'rgba(126, 198, 153, 0.04)' : 'transparent',
+                  width: `${progressPct}%`,
+                  background: 'linear-gradient(90deg, #E5C07B 0%, rgba(229,192,123,0.7) 100%)',
+                  boxShadow: '0 0 8px rgba(229,192,123,0.4)',
+                  transition: 'width 400ms cubic-bezier(0.16, 1, 0.3, 1)',
                 }}
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setDragOver(false)
-                  const file = e.dataTransfer.files[0]
-                  if (file) handleFileUpload(file)
-                }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileUpload(file)
-                  }}
-                />
-                {cvUploading ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#E5C07B' }} />
-                    <p className="text-[14px] font-medium" style={{ color: '#E5C07B' }}>Analyzing your CV...</p>
-                    <p className="text-[12px]" style={{ color: '#555559' }}>Extracting skills, experience, and education</p>
-                  </div>
-                ) : cvFileName || initialProfile?.cv_url ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <CheckCircle2 className="w-8 h-8" style={{ color: '#7EC699' }} />
-                    <p className="text-[14px] font-medium" style={{ color: '#7EC699' }}>{cvFileName || 'CV uploaded'}</p>
-                    <p className="text-[12px]" style={{ color: '#555559' }}>Click to upload a different file</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3">
-                    <Upload className="w-8 h-8" style={{ color: '#333338' }} />
-                    <p className="text-[14px] font-medium" style={{ color: '#8A8A8E' }}>Drag & drop or click to upload</p>
-                    <p className="text-[12px]" style={{ color: '#555559' }}>PDF only, max 10MB</p>
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-
-            {/* Personal Info */}
-            <SectionCard title="Personal Information">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <FieldLabel required>Full Name</FieldLabel>
-                  <DarkInput {...register('full_name')} placeholder="Jane Smith" error={errors.full_name?.message} />
-                </div>
-                <div>
-                  <FieldLabel required>Email</FieldLabel>
-                  <DarkInput type="email" {...register('email')} placeholder="jane@example.com" error={errors.email?.message} />
-                </div>
-                <div>
-                  <FieldLabel>Phone</FieldLabel>
-                  <DarkInput {...register('phone')} placeholder="+1 (555) 000-0000" />
-                </div>
-                <div>
-                  <FieldLabel>Location</FieldLabel>
-                  <DarkInput {...register('location')} placeholder="San Francisco, CA" />
-                </div>
-                <div>
-                  <FieldLabel>LinkedIn URL</FieldLabel>
-                  <DarkInput {...register('linkedin_url')} placeholder="linkedin.com/in/janesmith" />
-                </div>
-                <div>
-                  <FieldLabel required>Current / Most Recent Title</FieldLabel>
-                  <DarkInput {...register('job_title')} placeholder="Senior Software Engineer" error={errors.job_title?.message} />
-                </div>
-                <div>
-                  <FieldLabel required>Years of Experience</FieldLabel>
-                  <DarkInput type="number" min={0} max={50} {...register('years_of_experience')} className="w-24" />
-                </div>
-              </div>
-            </SectionCard>
-
-            {/* Projects */}
-            <SectionCard
-              title="Projects"
-              description="Share your GitHub profile and add manual projects to strengthen your cover letters."
-            >
-              <div className="grid grid-cols-1 gap-5">
-                <div>
-                  <FieldLabel>GitHub Profile URL</FieldLabel>
-                  <DarkInput {...register('github_url')} placeholder="github.com/janesmith" />
-                  <p className="text-[12px] mt-1" style={{ color: '#555559' }}>
-                    We read public repositories and use relevant projects in your letter.
-                  </p>
-                  <div className="mt-3 flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={importGithubProjects}
-                      disabled={githubImporting}
-                      className="h-9 px-4 rounded border text-[13px] font-medium transition-all duration-200 flex items-center gap-2"
-                      style={{
-                        borderColor: '#E5C07B',
-                        color: '#E5C07B',
-                        opacity: githubImporting ? 0.7 : 1,
-                        cursor: githubImporting ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {githubImporting ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Importing...
-                        </>
-                      ) : (
-                        'Import Projects'
-                      )}
-                    </button>
-                    {githubImportMessage && (
-                      <p className="text-[12px]" style={{ color: '#8A8A8E' }}>
-                        {githubImportMessage}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
-
-                <div>
-                  <FieldLabel>Manual Projects</FieldLabel>
-                  <p className="text-[12px] mb-3" style={{ color: '#555559' }}>
-                    Add important projects with description if they are missing from GitHub parsing.
-                  </p>
-
-                  <div className="space-y-3">
-                    {projectFields.map((field, index) => (
-                      <div
-                        key={field.id}
-                        className="p-4 rounded border relative"
-                        style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => removeProject(index)}
-                          className="absolute top-3 right-3 transition-colors"
-                          style={{ color: '#555559' }}
-                          onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
-                          onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-
-                        <div className="grid grid-cols-1 gap-3">
-                          <div>
-                            <FieldLabel>Project Name</FieldLabel>
-                            <DarkInput
-                              {...register(`manual_projects.${index}.name`)}
-                              placeholder="Distributed Payment Gateway"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Project Description</FieldLabel>
-                            <DarkTextarea
-                              {...register(`manual_projects.${index}.description`)}
-                              placeholder="Built a high-throughput payment service with retry logic and observability; reduced failed transactions by 22%."
-                              style={{ minHeight: '90px' }}
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Project URL (Optional)</FieldLabel>
-                            <DarkInput
-                              {...register(`manual_projects.${index}.url`)}
-                              placeholder="https://github.com/username/project"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => appendProject({ name: '', description: '', url: '' })}
-                    className="mt-3 w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
-                    style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add manual project
-                  </button>
-                </div>
-              </div>
-            </SectionCard>
-
-            {/* Skills */}
-            <SectionCard title="Skills" description="Add or edit your skills — drag from CV or type manually">
-              <div className="flex gap-2 mb-4">
-                <input
-                  value={skillInput}
-                  onChange={(e) => setSkillInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSkill() } }}
-                  placeholder="Type a skill and press Enter"
-                  className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
-                  style={{
-                    backgroundColor: '#1A1A1F',
-                    border: '1px solid #222228',
-                    color: '#EDEDEF',
-                  }}
-                  onFocus={e => { e.target.style.borderColor = '#E5C07B'; e.target.style.boxShadow = '0 0 0 2px rgba(229, 192, 123, 0.08)' }}
-                  onBlur={e => { e.target.style.borderColor = '#222228'; e.target.style.boxShadow = 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={addSkill}
-                  className="w-9 h-9 rounded border flex items-center justify-center transition-colors"
-                  style={{ borderColor: '#222228', color: '#8A8A8E' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#E5C07B')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#222228')}
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2 min-h-[36px]">
-                {skills.map((skill) => (
-                  <span
-                    key={skill}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border animate-tag-pop"
-                    style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}
-                  >
-                    {skill}
-                    <button
-                      type="button"
-                      onClick={() => removeSkill(skill)}
-                      className="transition-colors"
-                      style={{ color: '#555559' }}
-                      onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
-                      onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                {skills.length === 0 && (
-                  <p className="text-[13px]" style={{ color: '#555559' }}>No skills added yet</p>
-                )}
-              </div>
-            </SectionCard>
-
-            {/* Work Experience */}
-            <SectionCard title="Work Experience">
-              <div className="space-y-4">
-                {expFields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className="p-4 rounded border relative"
-                    style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
-                  >
-                    {expFields.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeExp(index)}
-                        className="absolute top-3 right-3 transition-colors"
-                        style={{ color: '#555559' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <FieldLabel>Job Title</FieldLabel>
-                        <DarkInput {...register(`work_experience.${index}.title`)} placeholder="Software Engineer" />
-                      </div>
-                      <div>
-                        <FieldLabel>Company</FieldLabel>
-                        <DarkInput {...register(`work_experience.${index}.company`)} placeholder="Acme Corp" />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <FieldLabel>Duration</FieldLabel>
-                        <DarkInput {...register(`work_experience.${index}.duration`)} placeholder="Jan 2022 – Present" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => appendExp({ title: '', company: '', duration: '', highlights: [] })}
-                  className="w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
-                  style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add position
-                </button>
-              </div>
-            </SectionCard>
-
-            {/* Education */}
-            <SectionCard title="Education">
-              <div className="space-y-4">
-                {eduFields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className="p-4 rounded border relative"
-                    style={{ backgroundColor: '#0A0A0B', borderColor: '#222228' }}
-                  >
-                    {eduFields.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeEdu(index)}
-                        className="absolute top-3 right-3 transition-colors"
-                        style={{ color: '#555559' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#E06C75')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#555559')}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <FieldLabel>Degree</FieldLabel>
-                        <DarkInput {...register(`education.${index}.degree`)} placeholder="B.Sc. Computer Science" />
-                      </div>
-                      <div>
-                        <FieldLabel>Institution</FieldLabel>
-                        <DarkInput {...register(`education.${index}.institution`)} placeholder="MIT" />
-                      </div>
-                      <div>
-                        <FieldLabel>Year</FieldLabel>
-                        <DarkInput {...register(`education.${index}.year`)} placeholder="2022" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => appendEdu({ degree: '', institution: '', year: '' })}
-                  className="w-full h-9 rounded border text-[13px] flex items-center justify-center gap-2 transition-colors"
-                  style={{ borderColor: '#222228', color: '#555559', borderStyle: 'dashed' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#333338'; e.currentTarget.style.color = '#8A8A8E' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#222228'; e.currentTarget.style.color = '#555559' }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add degree
-                </button>
-              </div>
-            </SectionCard>
-
-            {/* Preferences */}
-            <SectionCard title="Your Preferences" description="Help us write letters that sound like you">
-              <div className="space-y-7">
-                {/* Preferred Tone */}
-                <div>
-                  <FieldLabel required>Preferred Tone</FieldLabel>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {(['formal', 'conversational', 'confident', 'balanced'] as const).map((tone) => (
-                      <button
-                        key={tone}
-                        type="button"
-                        onClick={() => setValue('preferred_tone', tone)}
-                        className="h-10 rounded border text-[13px] font-medium capitalize transition-all duration-150"
-                        style={{
-                          borderColor: preferred_tone === tone ? '#E5C07B' : '#222228',
-                          backgroundColor: preferred_tone === tone ? 'rgba(229, 192, 123, 0.08)' : 'transparent',
-                          color: preferred_tone === tone ? '#E5C07B' : '#8A8A8E',
-                        }}
-                      >
-                        {tone}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
-
-                {/* Career Intent */}
-                <div>
-                  <FieldLabel required>Career Goal</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { value: 'same_field', label: 'Same field' },
-                      { value: 'career_change', label: 'Career change' },
-                      { value: 'promotion', label: 'Promotion level' },
-                      { value: 'freelance', label: 'Freelance / contract' },
-                    ].map(({ value, label }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setValue('career_intent', value as ProfileFormData['career_intent'])}
-                        className="h-10 rounded border text-[13px] font-medium transition-all duration-150"
-                        style={{
-                          borderColor: career_intent === value ? '#E5C07B' : '#222228',
-                          backgroundColor: career_intent === value ? 'rgba(229, 192, 123, 0.08)' : 'transparent',
-                          color: career_intent === value ? '#E5C07B' : '#8A8A8E',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-px" style={{ backgroundColor: '#1A1A1F' }} />
-
-                {/* Open-ended questions */}
-                <div>
-                  <FieldLabel required>What makes you unique beyond your resume?</FieldLabel>
-                  <DarkTextarea
-                    {...register('unique_value')}
-                    placeholder="E.g., I bridge the gap between deep technical work and executive communication — I can architect a system and then explain it to a board."
-                    error={errors.unique_value?.message}
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel required>What&apos;s your proudest professional achievement?</FieldLabel>
-                  <DarkTextarea
-                    {...register('proudest_achievement')}
-                    placeholder="E.g., I led a 3-person team to rebuild our checkout flow, cutting abandonment by 40% and adding $2M in annual revenue."
-                    error={errors.proudest_achievement?.message}
-                  />
-                </div>
-              </div>
-            </SectionCard>
-
-            {/* Optional Extras */}
-            <div className="rounded-lg border" style={{ backgroundColor: '#111113', borderColor: '#222228' }}>
-              <button
-                type="button"
-                onClick={() => setShowOptional(!showOptional)}
-                className="w-full px-6 py-5 flex items-center justify-between transition-colors"
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1A1A1F')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-              >
-                <div>
-                  <p className="text-[15px] font-semibold text-left" style={{ color: '#EDEDEF' }}>Optional Extras</p>
-                  <p className="text-[13px] text-left mt-0.5" style={{ color: '#8A8A8E' }}>Certifications, languages, framing notes</p>
-                </div>
-                <div className="text-[12px] font-medium flex items-center gap-1" style={{ color: '#555559' }}>
-                  {showOptional ? 'Hide' : 'Show'}
-                  <span className="ml-1">{showOptional ? '↑' : '↓'}</span>
-                </div>
-              </button>
-
-              {showOptional && (
-                <div className="px-6 pb-6 space-y-5 border-t" style={{ borderColor: '#1A1A1F' }}>
-                  <div className="pt-5">
-                    <FieldLabel>Certifications</FieldLabel>
-                    <div className="flex gap-2 mb-3">
-                      <input
-                        value={certInput}
-                        onChange={(e) => setCertInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCert() } }}
-                        placeholder="AWS Certified, PMP, etc."
-                        className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
-                        style={{ backgroundColor: '#1A1A1F', border: '1px solid #222228', color: '#EDEDEF' }}
-                        onFocus={e => { e.target.style.borderColor = '#E5C07B' }}
-                        onBlur={e => { e.target.style.borderColor = '#222228' }}
-                      />
-                      <button type="button" onClick={addCert} className="w-9 h-9 rounded border flex items-center justify-center" style={{ borderColor: '#222228', color: '#8A8A8E' }}>
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {certifications.map((cert) => (
-                        <span key={cert} className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border" style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}>
-                          {cert}
-                          <button type="button" onClick={() => setValue('certifications', certifications.filter(c => c !== cert))} style={{ color: '#555559' }}>
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel>Languages</FieldLabel>
-                    <div className="flex gap-2 mb-3">
-                      <input
-                        value={langInput}
-                        onChange={(e) => setLangInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLang() } }}
-                        placeholder="English (native), Arabic (fluent)"
-                        className="flex-1 h-9 px-3 rounded text-[14px] outline-none transition-all duration-200"
-                        style={{ backgroundColor: '#1A1A1F', border: '1px solid #222228', color: '#EDEDEF' }}
-                        onFocus={e => { e.target.style.borderColor = '#E5C07B' }}
-                        onBlur={e => { e.target.style.borderColor = '#222228' }}
-                      />
-                      <button type="button" onClick={addLang} className="w-9 h-9 rounded border flex items-center justify-center" style={{ borderColor: '#222228', color: '#8A8A8E' }}>
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {languages.map((lang) => (
-                        <span key={lang} className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] border" style={{ backgroundColor: '#1A1A1F', borderColor: '#222228', color: '#8A8A8E' }}>
-                          {lang}
-                          <button type="button" onClick={() => setValue('languages', languages.filter(l => l !== lang))} style={{ color: '#555559' }}>
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel>Anything to emphasize?</FieldLabel>
-                    <DarkTextarea
-                      {...register('things_to_emphasize')}
-                      placeholder="E.g., Emphasize my startup experience and comfort with ambiguity"
-                      style={{ minHeight: '80px' }}
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel>Anything to downplay?</FieldLabel>
-                    <DarkTextarea
-                      {...register('things_to_downplay')}
-                      placeholder="E.g., Don't focus on my time at Company X — it was a short stint"
-                      style={{ minHeight: '80px' }}
-                    />
-                  </div>
-                </div>
-              )}
+              />
             </div>
 
-            {/* Save */}
-            <div className="flex justify-end pb-8">
+            {/* Step dots */}
+            <div className="flex items-center justify-between mt-3">
+              {STEP_LABELS.map((label, i) => {
+                const stepNum = i + 1
+                const done = stepNum < currentStep
+                const active = stepNum === currentStep
+                return (
+                  <div key={i} className="flex flex-col items-center gap-1">
+                    <div
+                      className="w-2 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor: done ? '#E5C07B' : active ? '#E5C07B' : '#2A2A30',
+                        transform: active ? 'scale(1.4)' : 'scale(1)',
+                        boxShadow: active ? '0 0 6px rgba(229,192,123,0.5)' : 'none',
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Step content with slide animation */}
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <div
+              key={currentStep}
+              className="rounded-xl border p-7 mb-6"
+              style={{
+                backgroundColor: '#111113',
+                borderColor: '#1E1E23',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+                animation: `${direction === 'forward' ? 'slide-in-right' : 'slide-in-left'} 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
+              }}
+            >
+              {renderStepContent()}
+            </div>
+
+            {/* Navigation */}
+            <div className="flex items-center justify-between pb-10">
               <button
-                type="submit"
-                disabled={saving || saveSuccess}
-                className="h-10 px-6 rounded text-[14px] font-medium flex items-center gap-2 transition-all duration-200"
+                type="button"
+                onClick={goBack}
+                disabled={currentStep === 1}
+                className="flex items-center gap-2 h-10 px-5 rounded-lg border text-[13px] font-medium transition-all duration-200"
                 style={{
-                  backgroundColor: saveSuccess ? 'rgba(126, 198, 153, 0.15)' : '#E5C07B',
-                  color: saveSuccess ? '#7EC699' : '#0A0A0B',
-                  border: saveSuccess ? '1px solid rgba(126, 198, 153, 0.3)' : 'none',
-                  opacity: (saving || saveSuccess) ? 0.8 : 1,
-                  cursor: (saving || saveSuccess) ? 'not-allowed' : 'pointer',
+                  borderColor: currentStep === 1 ? '#1A1A1F' : '#2A2A30',
+                  color: currentStep === 1 ? '#2A2A30' : '#6A6A70',
+                  cursor: currentStep === 1 ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'transparent',
                 }}
-                onMouseEnter={e => {
-                  if (!saving && !saveSuccess) (e.currentTarget.style.backgroundColor = '#F0D08A')
-                }}
-                onMouseLeave={e => {
-                  if (!saveSuccess) (e.currentTarget.style.backgroundColor = '#E5C07B')
-                }}
+                onMouseEnter={e => { if (currentStep > 1) { e.currentTarget.style.borderColor = '#3A3A42'; e.currentTarget.style.color = '#EDEDEF' } }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = currentStep === 1 ? '#1A1A1F' : '#2A2A30'; e.currentTarget.style.color = currentStep === 1 ? '#2A2A30' : '#6A6A70' }}
               >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : saveSuccess ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    Saved!
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save Profile
-                  </>
-                )}
+                <ChevronLeft className="w-4 h-4" />
+                Back
               </button>
+
+              {currentStep < TOTAL_STEPS && (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="flex items-center gap-2 h-10 px-6 rounded-lg text-[13px] font-semibold transition-all duration-200"
+                  style={{
+                    backgroundColor: '#E5C07B',
+                    color: '#0A0A0B',
+                    boxShadow: '0 0 16px rgba(229,192,123,0.18)',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#F0D08A'; e.currentTarget.style.boxShadow = '0 0 24px rgba(229,192,123,0.28)' }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#E5C07B'; e.currentTarget.style.boxShadow = '0 0 16px rgba(229,192,123,0.18)' }}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </form>
         </div>
       </div>
     </>
+  )
+}
+
+function StepHeading({ step, title, subtitle }: { step: number; title: string; subtitle?: string }) {
+  return (
+    <div className="mb-6">
+      <p className="font-mono text-[11px] tracking-[0.12em] uppercase mb-1.5" style={{ color: '#555559' }}>
+        Step {step}
+      </p>
+      <h2 className="font-serif text-[22px] leading-tight tracking-[-0.01em] mb-1" style={{ color: '#EDEDEF' }}>
+        {title}
+      </h2>
+      {subtitle && <p className="text-[13px]" style={{ color: '#6A6A70' }}>{subtitle}</p>}
+    </div>
   )
 }
