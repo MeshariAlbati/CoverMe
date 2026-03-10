@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm, useFieldArray } from 'react-hook-form'
-import type { Resolver } from 'react-hook-form'
+import type { FieldErrors, Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
@@ -72,6 +72,55 @@ const STEP_LABELS = [
   'Optional Extras',
   'Review & Save',
 ]
+
+const REQUIRED_FIELD_LABELS: Record<string, string> = {
+  full_name: 'Full Name',
+  email: 'Email',
+  job_title: 'Current / Most Recent Title',
+  years_of_experience: 'Years of Experience',
+  preferred_tone: 'Preferred Tone',
+  career_intent: 'Career Goal',
+  unique_value: 'What makes you unique',
+  proudest_achievement: 'Proudest professional achievement',
+}
+
+const REQUIRED_FIELD_STEPS: Record<string, number> = {
+  full_name: 2,
+  email: 2,
+  job_title: 2,
+  years_of_experience: 2,
+  preferred_tone: 7,
+  career_intent: 7,
+  unique_value: 7,
+  proudest_achievement: 7,
+}
+
+function collectErrorPaths(value: unknown, prefix = ''): string[] {
+  if (!value || typeof value !== 'object') return []
+
+  const record = value as Record<string, unknown>
+  const paths: string[] = []
+
+  if (typeof record.message === 'string' && prefix) {
+    paths.push(prefix)
+  }
+
+  for (const [key, nested] of Object.entries(record)) {
+    if (key === 'message' || key === 'type' || key === 'ref' || key === 'types') continue
+    const nextPrefix = prefix ? `${prefix}.${key}` : key
+
+    if (Array.isArray(nested)) {
+      nested.forEach((item, index) => {
+        paths.push(...collectErrorPaths(item, `${nextPrefix}.${index}`))
+      })
+      continue
+    }
+
+    paths.push(...collectErrorPaths(nested, nextPrefix))
+  }
+
+  return paths
+}
 
 // Shared input styles
 function DarkInput({ error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { error?: string }) {
@@ -146,6 +195,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
   const [skillInput, setSkillInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveValidationError, setSaveValidationError] = useState<string | null>(null)
   const [showOptional, setShowOptional] = useState(false)
   const [certInput, setCertInput] = useState('')
   const [langInput, setLangInput] = useState('')
@@ -358,6 +408,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
   }
 
   async function onSubmit(data: ProfileFormData) {
+    setSaveValidationError(null)
     setSaving(true)
     const supabase = createClient()
 
@@ -400,13 +451,40 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
     }
   }
 
+  function onInvalidSubmit(formErrors: FieldErrors<ProfileFormData>) {
+    const errorPaths = collectErrorPaths(formErrors)
+    const fieldKeys = Array.from(new Set(errorPaths.map((path) => path.split('.')[0] || '')))
+      .filter(Boolean)
+
+    const requiredMissingKeys = fieldKeys.filter((key) => key in REQUIRED_FIELD_LABELS)
+    const firstInvalidStep = requiredMissingKeys
+      .map((key) => REQUIRED_FIELD_STEPS[key] || TOTAL_STEPS)
+      .sort((a, b) => a - b)[0] || TOTAL_STEPS
+
+    const missingLabels = requiredMissingKeys.map((key) => REQUIRED_FIELD_LABELS[key])
+    const message = missingLabels.length > 0
+      ? `Please complete required fields before saving: ${missingLabels.join(', ')}.`
+      : 'Please complete all required questions before saving your profile.'
+
+    setSaveValidationError(message)
+    alert(message)
+
+    if (currentStep !== firstInvalidStep) {
+      setDirection(firstInvalidStep > currentStep ? 'forward' : 'back')
+      setCurrentStep(firstInvalidStep)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
+
   function goNext() {
+    setSaveValidationError(null)
     setDirection('forward')
     setCurrentStep(s => Math.min(s + 1, TOTAL_STEPS))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function goBack() {
+    setSaveValidationError(null)
     setDirection('back')
     setCurrentStep(s => Math.max(s - 1, 1))
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1073,7 +1151,7 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
           </div>
 
           {/* Step content with slide animation */}
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit(onSubmit, onInvalidSubmit)}>
             <div
               key={currentStep}
               className="rounded-xl border p-7 mb-6"
@@ -1084,6 +1162,18 @@ export default function ProfileForm({ initialProfile, userId, userEmail }: Props
                 animation: `${direction === 'forward' ? 'slide-in-right' : 'slide-in-left'} 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
               }}
             >
+              {saveValidationError && (
+                <div
+                  className="mb-5 rounded-lg border px-4 py-3 text-[13px]"
+                  style={{
+                    borderColor: 'rgba(224, 108, 117, 0.32)',
+                    backgroundColor: 'rgba(224, 108, 117, 0.1)',
+                    color: '#E06C75',
+                  }}
+                >
+                  {saveValidationError}
+                </div>
+              )}
               {renderStepContent()}
             </div>
 
