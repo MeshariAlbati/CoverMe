@@ -1,4 +1,4 @@
-# CoverMe — AI-Powered Cover Letter Generator
+# CoverMe - AI-Powered Cover Letter Generator
 
 Generate highly personalized cover letters using a 4-agent AI pipeline: company research → skill matching → letter writing. Users can switch providers (`Claude` or `Groq`) from the UI.
 
